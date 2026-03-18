@@ -5,20 +5,22 @@ description: >
   Use this skill when: (1) the user asks about current bugs, requirements, or issue status;
   (2) the user wants to create/file a bug or requirement;
   (3) the user wants to record or retrieve a memory (recall/write);
-  (4) the user asks about project progress or status.
+  (4) the user asks about project progress or status;
+  (5) the user wants to create or manage a project.
   Trigger on phrases like "file a bug", "create a requirement", "what are the open issues",
-  "record this", "recall memory", "what's the project status", "list bugs", "check progress".
+  "record this", "recall memory", "what's the project status", "list bugs", "check progress",
+  "create project", "update issue", "mark as done".
 compatibility: Requires network access to the Memory Flow API
 allowed-tools: Bash(curl:*)
 metadata:
   author: warriorguo
-  version: "1.0"
+  version: "2.0"
   service-url: "https://memory-flow.local.playquota.com"
 ---
 
 # Memory Flow Project Management Skill
 
-Interact with the Memory Flow project management platform to manage issues (bugs/requirements), track progress, and manage memories.
+Interact with the Memory Flow project management platform to manage projects, issues (bugs/requirements), track progress, and manage memories.
 
 ## Configuration
 
@@ -31,47 +33,67 @@ No authentication required. All API endpoints are public.
 
 ---
 
-## Core Workflows
+## Project Management
 
-### 1. List Issues (Bugs / Requirements)
+### List Projects
 
-When the user asks about current bugs, requirements, open issues, or what needs to be done.
-
-**First, list projects to find the project ID:**
 ```bash
 curl -s https://memory-flow.local.playquota.com/api/v1/projects | python3 -m json.tool
 ```
 
-**Then list issues for that project:**
+Supports query params: `name`, `status` (active/paused/archived), `owner_id`, `page`, `page_size`.
+
+### Create Project
+
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues?type={type}&status={status}&priority={priority}&page=1&page_size=20" | python3 -m json.tool
+curl -s -X POST https://memory-flow.local.playquota.com/api/v1/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "MF",
+    "name": "Memory Flow",
+    "summary": "Project management platform",
+    "git_url": "https://github.com/warriorguo/memory_flow.git",
+    "owner_id": "admin"
+  }' | python3 -m json.tool
 ```
 
-Query parameters (all optional):
+Required: `key` (uppercase alphanumeric, 2-10 chars), `name`.
+Optional: `summary`, `description`, `design_principles`, `git_url`, `cicd_url`, `doc_url`, `owner_id`.
+
+### Get / Update / Archive Project
+
+```bash
+# Get
+curl -s https://memory-flow.local.playquota.com/api/v1/projects/{id} | python3 -m json.tool
+
+# Update
+curl -s -X PUT https://memory-flow.local.playquota.com/api/v1/projects/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"name": "New Name", "status": "active"}' | python3 -m json.tool
+
+# Archive
+curl -s -X DELETE https://memory-flow.local.playquota.com/api/v1/projects/{id} | python3 -m json.tool
+```
+
+---
+
+## Issue Management (Bugs / Requirements)
+
+### List Issues
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues?page=1&page_size=20" | python3 -m json.tool
+```
+
+Query params (all optional):
 - `type`: `requirement` or `bug`
 - `status`: `todo`, `in_progress`, `review`, `testing`, `done`, `closed`, `rejected`
 - `priority`: `P0`, `P1`, `P2`
-- `assignee_id`: filter by assignee
-- `keyword`: search in title and description
-- `page`, `page_size`: pagination
+- `assignee_id`, `keyword`, `page`, `page_size`
 
-**Present results as a clean table** with columns: Key, Title, Type, Priority, Status, Assignee.
+**Present results as a clean table:** Key | Title | Type | Priority | Status | Assignee
 
-### 2. Create a Bug or Requirement
-
-When the user wants to file a bug, report an issue, or create a requirement/feature request.
-
-**Gather from the user (or infer from context):**
-- `type`: "bug" or "requirement" (required)
-- `title`: short summary (required)
-- `description`: detailed description (ask if not provided)
-- `priority`: "P0" (blocking), "P1" (important), "P2" (normal, default)
-- `assignee_id`: who should handle it (optional)
-
-**Priority guidelines to help the user choose:**
-- **P0**: Blocking issue, must fix immediately
-- **P1**: Important but not blocking core flow
-- **P2**: Normal priority, can be scheduled
+### Create Issue
 
 ```bash
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues" \
@@ -85,21 +107,38 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/{projec
   }' | python3 -m json.tool
 ```
 
-After creation, confirm with the issue key (e.g., "MF-3") and a summary.
+Required: `type` (bug/requirement), `title`.
+Optional: `description`, `priority` (P0/P1/P2, default P2), `assignee_id`, `source`, `version`, `git_url`, `pr_url`, `doc_url`.
 
-### 3. Update Issue Status
+Priority guidelines:
+- **P0**: Blocking, must fix immediately
+- **P1**: Important but not blocking core flow
+- **P2**: Normal, can be scheduled
 
-When the user wants to move an issue forward, mark it done, etc.
+After creation, confirm with the issue key (e.g., "MF-3").
 
-**Allowed transitions:**
+### Get Issue Detail
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" | python3 -m json.tool
 ```
-todo       -> in_progress, rejected
-in_progress -> review, todo
-review     -> testing, in_progress
-testing    -> done, in_progress
-done       -> closed, in_progress
-rejected   -> todo
+
+### Update Issue
+
+```bash
+curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated title",
+    "priority": "P0",
+    "assignee_id": "new-assignee"
+  }' | python3 -m json.tool
 ```
+
+Updatable fields: `title`, `description`, `priority`, `assignee_id`, `source`, `version`, `git_url`, `pr_url`, `doc_url`.
+All field changes are automatically tracked in issue history.
+
+### Transition Issue Status
 
 ```bash
 curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/status" \
@@ -107,13 +146,17 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId
   -d '{"status": "in_progress"}' | python3 -m json.tool
 ```
 
-### 4. Get Issue Detail
-
-```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" | python3 -m json.tool
+Allowed transitions:
+```
+todo        -> in_progress, rejected
+in_progress -> review, todo
+review      -> testing, in_progress
+testing     -> done, in_progress
+done        -> closed, in_progress
+rejected    -> todo
 ```
 
-### 5. Get Issue History
+### Get Issue History
 
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history" | python3 -m json.tool
@@ -121,13 +164,9 @@ curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history
 
 ---
 
-### 6. Record a Memory
+## Memory Management
 
-When the user says "remember this", "record this", "save this context", or wants to persist knowledge for future AI/Agent use.
-
-**Memory types:**
-- **recall**: Searchable project context — design decisions, root causes, background constraints, decision records
-- **write**: Written artifacts — AI-generated drafts, task summaries, supplementary context
+### Create Memory
 
 ```bash
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories" \
@@ -142,57 +181,85 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories" \
   }' | python3 -m json.tool
 ```
 
-- `type`: "recall" or "write" (required)
-- `title`: short summary (required)
-- `content`: full content (required)
-- `project_id`: associate with project (optional)
-- `source_object_type`: "project", "requirement", or "bug" (optional)
-- `source_object_id`: UUID of the related object (optional)
+Required: `type` (recall/write), `title`, `content`.
+Optional: `project_id`, `source_object_type` (project/requirement/bug), `source_object_id`.
 
-### 7. Retrieve Memories
+Memory types:
+- **recall**: Searchable project context — design decisions, root causes, constraints, decision records
+- **write**: Written artifacts — AI-generated drafts, task summaries, supplementary context
 
-When the user asks to recall, search memory, or look up prior context.
+### List / Search Memories
 
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/memories?project_id={projectId}&type={type}&keyword={keyword}&page=1&page_size=20" | python3 -m json.tool
 ```
 
-Query parameters (all optional):
-- `project_id`: filter by project
-- `type`: `recall` or `write`
-- `keyword`: search in title and content
-- `page`, `page_size`: pagination
+Query params: `project_id`, `type` (recall/write), `keyword`, `page`, `page_size`.
 
-**Present results clearly** with title, type, and a content preview.
-
-### 8. Get Memory Detail
+### Get / Update / Delete Memory
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/memories/{memoryId}" | python3 -m json.tool
+# Get
+curl -s "https://memory-flow.local.playquota.com/api/v1/memories/{id}" | python3 -m json.tool
+
+# Update
+curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/memories/{id}" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Updated", "content": "New content"}' | python3 -m json.tool
+
+# Delete
+curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/memories/{id}"
 ```
 
 ---
 
-### 9. Project Progress
+## Progress & Statistics
 
-When the user asks about project status, progress, or how things are going.
+### Progress Summary
 
-**Get summary statistics:**
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/summary" | python3 -m json.tool
 ```
 
-Returns: `status_counts`, `priority_counts`, `type_counts`, `total`.
+Returns: `status_counts` (map), `priority_counts` (map), `type_counts` (map), `total`.
 
-**Get trend data (last N days):**
+**Present as natural language**, e.g.:
+> Project MF: 12 total issues (3 done, 5 in progress, 4 todo). 1 P0, 3 P1, 8 P2.
+
+### Trend Data
+
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/trend?days=30" | python3 -m json.tool
 ```
 
-Returns daily created vs done counts.
+Returns daily `created` and `done` counts.
 
-**Present progress as a concise summary**, e.g.:
-> Project MF: 12 total issues (3 done, 5 in progress, 4 todo). 1 P0, 3 P1, 8 P2.
+---
+
+## Tags
+
+```bash
+# List tags
+curl -s https://memory-flow.local.playquota.com/api/v1/tags | python3 -m json.tool
+
+# Create tag
+curl -s -X POST https://memory-flow.local.playquota.com/api/v1/tags \
+  -H "Content-Type: application/json" \
+  -d '{"name": "frontend", "color": "#1890ff"}' | python3 -m json.tool
+
+# Add tag to issue
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/tags" \
+  -H "Content-Type: application/json" \
+  -d '{"tag_id": "{tagId}"}' | python3 -m json.tool
+
+# Remove tag from issue
+curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/tags/{tagId}"
+
+# Add/remove tag to/from memory (same pattern)
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memoryId}/tags" \
+  -H "Content-Type: application/json" \
+  -d '{"tag_id": "{tagId}"}' | python3 -m json.tool
+```
 
 ---
 
@@ -201,7 +268,10 @@ Returns daily created vs done counts.
 | Action | Method | Endpoint |
 |--------|--------|----------|
 | List projects | GET | `/api/v1/projects` |
+| Create project | POST | `/api/v1/projects` |
 | Get project | GET | `/api/v1/projects/{id}` |
+| Update project | PUT | `/api/v1/projects/{id}` |
+| Archive project | DELETE | `/api/v1/projects/{id}` |
 | List issues | GET | `/api/v1/projects/{projectId}/issues` |
 | Create issue | POST | `/api/v1/projects/{projectId}/issues` |
 | Get issue | GET | `/api/v1/issues/{id}` |
@@ -217,33 +287,25 @@ Returns daily created vs done counts.
 | Delete memory | DELETE | `/api/v1/memories/{id}` |
 | List tags | GET | `/api/v1/tags` |
 | Create tag | POST | `/api/v1/tags` |
-
----
+| Add tag to issue | POST | `/api/v1/issues/{id}/tags` |
+| Remove tag from issue | DELETE | `/api/v1/issues/{id}/tags/{tagId}` |
+| Add tag to memory | POST | `/api/v1/memories/{id}/tags` |
+| Remove tag from memory | DELETE | `/api/v1/memories/{id}/tags/{tagId}` |
 
 ## Response Format
 
-**List responses:**
-```json
-{"data": [...], "total": 42, "page": 1, "page_size": 20}
-```
-
-**Single item responses:**
-```json
-{"data": {...}}
-```
-
-**Error responses:**
-```json
-{"error": "error message"}
-```
+List: `{"data": [...], "total": N, "page": N, "page_size": N}`
+Single: `{"data": {...}}`
+Error: `{"error": "message"}`
 
 ---
 
 ## Tips
 
-1. When creating issues, **infer type from context**: if the user reports something broken, it's a `bug`; if they want something new, it's a `requirement`
-4. When recording memories, **choose type wisely**: `recall` for reusable context, `write` for output artifacts
-5. **Project key format**: uppercase alphanumeric, 2-10 chars (e.g., MF, PROJ)
-6. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g., MF-1, MF-2)
-7. When listing issues, **default to showing open items** (exclude `done`, `closed`, `rejected`) unless the user asks for all
-8. For progress queries, **summarize in natural language** rather than dumping raw JSON
+1. **Infer type from context**: something broken = `bug`; something new = `requirement`
+2. **Choose memory type wisely**: `recall` for reusable context, `write` for output artifacts
+3. **Project key format**: uppercase alphanumeric, 2-10 chars (e.g., MF, PROJ)
+4. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g., MF-1, MF-2)
+5. **Default to open items** when listing issues (exclude done/closed/rejected) unless user asks for all
+6. **Summarize in natural language** for progress queries, don't dump raw JSON
+7. **No auth needed** — all endpoints are public, just call them directly
