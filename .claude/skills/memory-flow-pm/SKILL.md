@@ -300,6 +300,38 @@ Error: `{"error": "message"}`
 
 ---
 
+## Completing an Issue (Required Workflow)
+
+When an issue is done, you **MUST** follow these steps before marking it as `done`:
+
+1. **Fill `git_url`** — update the issue with the commit URL or PR link. This field must NOT be left empty.
+
+```bash
+curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" \
+  -H "Content-Type: application/json" \
+  -d '{"git_url": "https://github.com/owner/repo/commit/{sha}"}' | python3 -m json.tool
+```
+
+2. **Commit message format** — all commits related to an issue must follow this format:
+
+```
+[{ISSUE_KEY}] description of the change
+```
+
+Examples:
+- `[MF-1] Add image rotation support`
+- `[MF-3] Fix memory search returning empty results`
+
+3. **Transition to done** — only after `git_url` is set.
+
+```bash
+curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/status" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "done"}' | python3 -m json.tool
+```
+
+---
+
 ## Tips
 
 1. **Infer type from context**: something broken = `bug`; something new = `requirement`
@@ -309,3 +341,4 @@ Error: `{"error": "message"}`
 5. **Default to open items** when listing issues (exclude done/closed/rejected) unless user asks for all
 6. **Summarize in natural language** for progress queries, don't dump raw JSON
 7. **No auth needed** — all endpoints are public, just call them directly
+8. **Completing issues**: always fill `git_url` and use `[ISSUE_KEY] description` format in commits before marking done
