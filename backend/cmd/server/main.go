@@ -48,17 +48,14 @@ func main() {
 	issueHistoryRepo := repository.NewIssueHistoryRepo(pool)
 	memoryRepo := repository.NewMemoryRepo(pool)
 	tagRepo := repository.NewTagRepo(pool)
-	userRepo := repository.NewUserRepo(pool)
 
 	// Initialize services
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, issueHistoryRepo)
 	progressSvc := service.NewProgressService(issueRepo)
 	memorySvc := service.NewMemoryService(memoryRepo)
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authSvc)
 	projectHandler := handler.NewProjectHandler(projectSvc)
 	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo)
 	progressHandler := handler.NewProgressHandler(progressSvc)
@@ -67,8 +64,6 @@ func main() {
 
 	// Set up router
 	router := handler.NewRouter(
-		authSvc,
-		authHandler,
 		projectHandler,
 		issueHandler,
 		progressHandler,

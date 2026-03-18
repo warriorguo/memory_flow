@@ -27,18 +27,7 @@ Base URL: https://memory-flow.local.playquota.com
 API Prefix: /api/v1
 ```
 
-All API calls require a JWT token. On first activation, log in to get a token:
-
-```bash
-TOKEN=$(curl -s -X POST https://memory-flow.local.playquota.com/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
-```
-
-Use this token in all subsequent requests:
-```
--H "Authorization: Bearer $TOKEN"
-```
+No authentication required. All API endpoints are public.
 
 ---
 
@@ -50,14 +39,12 @@ When the user asks about current bugs, requirements, open issues, or what needs 
 
 **First, list projects to find the project ID:**
 ```bash
-curl -s https://memory-flow.local.playquota.com/api/v1/projects \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s https://memory-flow.local.playquota.com/api/v1/projects | python3 -m json.tool
 ```
 
 **Then list issues for that project:**
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues?type={type}&status={status}&priority={priority}&page=1&page_size=20" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues?type={type}&status={status}&priority={priority}&page=1&page_size=20" | python3 -m json.tool
 ```
 
 Query parameters (all optional):
@@ -88,7 +75,6 @@ When the user wants to file a bug, report an issue, or create a requirement/feat
 
 ```bash
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "type": "bug",
@@ -117,7 +103,6 @@ rejected   -> todo
 
 ```bash
 curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/status" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"status": "in_progress"}' | python3 -m json.tool
 ```
@@ -125,15 +110,13 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId
 ### 4. Get Issue Detail
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" | python3 -m json.tool
 ```
 
 ### 5. Get Issue History
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history" | python3 -m json.tool
 ```
 
 ---
@@ -148,7 +131,6 @@ When the user says "remember this", "record this", "save this context", or wants
 
 ```bash
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "{projectId}",
@@ -172,8 +154,7 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories" \
 When the user asks to recall, search memory, or look up prior context.
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/memories?project_id={projectId}&type={type}&keyword={keyword}&page=1&page_size=20" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/memories?project_id={projectId}&type={type}&keyword={keyword}&page=1&page_size=20" | python3 -m json.tool
 ```
 
 Query parameters (all optional):
@@ -187,8 +168,7 @@ Query parameters (all optional):
 ### 8. Get Memory Detail
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/memories/{memoryId}" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/memories/{memoryId}" | python3 -m json.tool
 ```
 
 ---
@@ -199,16 +179,14 @@ When the user asks about project status, progress, or how things are going.
 
 **Get summary statistics:**
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/summary" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/summary" | python3 -m json.tool
 ```
 
 Returns: `status_counts`, `priority_counts`, `type_counts`, `total`.
 
 **Get trend data (last N days):**
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/trend?days=30" \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/trend?days=30" | python3 -m json.tool
 ```
 
 Returns daily created vs done counts.
@@ -222,7 +200,6 @@ Returns daily created vs done counts.
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| Login | POST | `/api/v1/auth/login` |
 | List projects | GET | `/api/v1/projects` |
 | Get project | GET | `/api/v1/projects/{id}` |
 | List issues | GET | `/api/v1/projects/{projectId}/issues` |
@@ -264,9 +241,7 @@ Returns daily created vs done counts.
 
 ## Tips
 
-1. **Always login first** to get a token before making API calls
-2. **Cache the token** within the conversation — it expires in 24 hours
-3. When creating issues, **infer type from context**: if the user reports something broken, it's a `bug`; if they want something new, it's a `requirement`
+1. When creating issues, **infer type from context**: if the user reports something broken, it's a `bug`; if they want something new, it's a `requirement`
 4. When recording memories, **choose type wisely**: `recall` for reusable context, `write` for output artifacts
 5. **Project key format**: uppercase alphanumeric, 2-10 chars (e.g., MF, PROJ)
 6. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g., MF-1, MF-2)

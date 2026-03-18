@@ -4,16 +4,11 @@ import { Layout, Menu } from 'antd';
 import {
   ProjectOutlined,
   BulbOutlined,
-  LogoutOutlined,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
 
-interface SidebarProps {
-  onLogout: () => void;
-}
-
-const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
+const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,21 +23,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       icon: <BulbOutlined />,
       label: 'Memory 管理',
     },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      danger: true,
-    },
   ];
 
   const handleClick = ({ key }: { key: string }) => {
-    if (key === 'logout') {
-      onLogout();
-      navigate('/login');
-    } else {
-      navigate(key);
-    }
+    navigate(key);
   };
 
   return (
