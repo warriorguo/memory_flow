@@ -148,8 +148,9 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId
 
 Allowed transitions:
 ```
-todo        -> in_progress, rejected
-in_progress -> review, done, todo
+todo        -> in_progress, suspended, rejected
+in_progress -> review, done, suspended, todo
+suspended   -> todo
 review      -> testing, in_progress
 testing     -> done, in_progress
 done        -> closed, in_progress

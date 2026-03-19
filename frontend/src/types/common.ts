@@ -12,7 +12,7 @@ export interface ApiResponse<T> {
 export type ProjectStatus = 'active' | 'paused' | 'archived';
 export type IssueType = 'requirement' | 'bug';
 export type Priority = 'P0' | 'P1' | 'P2';
-export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'closed' | 'rejected';
+export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'closed' | 'suspended' | 'rejected';
 export type MemoryType = 'recall' | 'write';
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
@@ -22,6 +22,7 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   testing: '测试中',
   done: '已完成',
   closed: '已关闭',
+  suspended: '已挂起',
   rejected: '已拒绝',
 };
 
@@ -38,6 +39,7 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   testing: 'purple',
   done: 'success',
   closed: 'default',
+  suspended: 'gold',
   rejected: 'error',
 };
 
@@ -49,11 +51,12 @@ export const PRIORITY_COLORS: Record<Priority, string> = {
 
 // Allowed status transitions
 export const ALLOWED_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
-  todo: ['in_progress', 'rejected'],
-  in_progress: ['review', 'done', 'todo'],
+  todo: ['in_progress', 'suspended', 'rejected'],
+  in_progress: ['review', 'done', 'suspended', 'todo'],
   review: ['testing', 'in_progress'],
   testing: ['done', 'in_progress'],
   done: ['closed', 'in_progress'],
   closed: [],
+  suspended: ['todo'],
   rejected: ['todo'],
 };
