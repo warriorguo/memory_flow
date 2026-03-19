@@ -50,7 +50,7 @@ export const PRIORITY_COLORS: Record<Priority, string> = {
 // Allowed status transitions
 export const ALLOWED_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
   todo: ['in_progress', 'rejected'],
-  in_progress: ['review', 'todo'],
+  in_progress: ['review', 'done', 'todo'],
   review: ['testing', 'in_progress'],
   testing: ['done', 'in_progress'],
   done: ['closed', 'in_progress'],
