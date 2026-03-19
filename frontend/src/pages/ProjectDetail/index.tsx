@@ -1,19 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, Descriptions, Button, Card, Modal, Form, Input, Select, Spin, message } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProject, updateProject } from '../../api/project';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import IssueListView from '../IssueList';
 import ProgressDashboard from '../ProgressDashboard';
 import MemoryListView from '../MemoryList';
 import dayjs from 'dayjs';
 
+const TAB_KEYS = ['overview', 'issues', 'progress', 'memory'] as const;
+type TabKey = typeof TAB_KEYS[number];
+
+function getTabFromHash(hash: string): TabKey {
+  const key = hash.replace('#', '') as TabKey;
+  return TAB_KEYS.includes(key) ? key : 'overview';
+}
+
 const ProjectDetail: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<TabKey>(() => getTabFromHash(location.hash));
   const [editOpen, setEditOpen] = useState(false);
   const [form] = Form.useForm();
+
+  const handleTabChange = useCallback((key: string) => {
+    setActiveTab(key as TabKey);
+    navigate({ hash: key === 'overview' ? '' : key }, { replace: false });
+  }, [navigate]);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveTab(getTabFromHash(window.location.hash));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', projectId],
@@ -93,7 +115,7 @@ const ProjectDetail: React.FC = () => {
   return (
     <div>
       <h2 style={{ marginBottom: 16 }}>{project.name}</h2>
-      <Tabs items={tabItems} />
+      <Tabs items={tabItems} activeKey={activeTab} onChange={handleTabChange} />
 
       <Modal
         title="编辑项目"
