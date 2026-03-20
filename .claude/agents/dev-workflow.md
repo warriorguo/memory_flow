@@ -130,15 +130,22 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID
 
 Only trigger if the user explicitly asks for a build/deploy.
 
-```bash
-# Find the app
-curl -s "https://cicd.local.playquota.com/api/apps" | python3 -m json.tool
+**Delegate entirely to the `cicd-manager` skill** — do not reimplement the CI/CD workflow here.
+The cicd-manager skill handles: pre-flight git check, finding the app, triggering the build,
+polling build status, deploying on success, and monitoring pods.
 
-# Trigger build
-curl -s -X POST "https://cicd.local.playquota.com/api/apps/APP_ID/releases" \
-  -H "Content-Type: application/json" \
-  -d "{\"branch\": \"main\", \"commit_sha\": \"$SHA\"}"
-```
+Invoke it with context:
+- CI/CD platform URL: `https://cicd.local.playquota.com`
+- App name: matches the project name in Memory Flow (e.g. `memory-flow`, `cicd-platform`)
+- The commit has already been pushed at this point
+
+The cicd-manager skill will:
+1. Run pre-flight git check (verify clean + pushed)
+2. Find the app by name
+3. Trigger build with the current commit SHA
+4. Poll build status until success or failure
+5. Deploy the release
+6. Confirm deployment status
 
 ---
 
