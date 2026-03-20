@@ -71,6 +71,19 @@ func (r *IssueRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, er
 	return issue, nil
 }
 
+func (r *IssueRepo) GetByKey(ctx context.Context, key string) (*model.Issue, error) {
+	query := fmt.Sprintf(`SELECT %s FROM issues WHERE issue_key = $1`, issueColumns)
+	row := r.pool.QueryRow(ctx, query, key)
+	issue, err := scanIssue(row)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get issue by key: %w", err)
+	}
+	return issue, nil
+}
+
 func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error) {
 	var conditions []string
 	var args []interface{}

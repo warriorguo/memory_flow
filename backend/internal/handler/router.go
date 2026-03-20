@@ -30,6 +30,7 @@ func NewRouter(
 		r.Post("/projects/{projectId}/issues", issueHandler.Create)
 
 		// Issues (direct access)
+		r.Get("/issues", issueHandler.Search)
 		r.Get("/issues/{id}", issueHandler.Get)
 		r.Put("/issues/{id}", issueHandler.Update)
 		r.Patch("/issues/{id}/status", issueHandler.TransitionStatus)

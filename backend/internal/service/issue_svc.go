@@ -79,6 +79,10 @@ func (s *IssueService) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue,
 	return s.issueRepo.GetByID(ctx, id)
 }
 
+func (s *IssueService) GetByKey(ctx context.Context, key string) (*model.Issue, error) {
+	return s.issueRepo.GetByKey(ctx, key)
+}
+
 func (s *IssueService) List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error) {
 	return s.issueRepo.List(ctx, filter)
 }

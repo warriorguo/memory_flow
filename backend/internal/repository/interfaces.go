@@ -22,6 +22,7 @@ type ProjectRepository interface {
 type IssueRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error)
+	GetByKey(ctx context.Context, key string) (*model.Issue, error)
 	List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
 	Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error)

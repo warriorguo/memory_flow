@@ -117,7 +117,15 @@ Priority guidelines:
 
 After creation, confirm with the issue key (e.g., "MF-3").
 
-### Get Issue Detail
+### Get Issue by Key
+
+Look up an issue directly by its key (e.g., MF-1, OZX-22):
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues?key=MF-1" | python3 -m json.tool
+```
+
+### Get Issue Detail by ID
 
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" | python3 -m json.tool
@@ -275,7 +283,8 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memory
 | Archive project | DELETE | `/api/v1/projects/{id}` |
 | List issues | GET | `/api/v1/projects/{projectId}/issues` |
 | Create issue | POST | `/api/v1/projects/{projectId}/issues` |
-| Get issue | GET | `/api/v1/issues/{id}` |
+| Search issue by key | GET | `/api/v1/issues?key={issueKey}` |
+| Get issue by ID | GET | `/api/v1/issues/{id}` |
 | Update issue | PUT | `/api/v1/issues/{id}` |
 | Transition status | PATCH | `/api/v1/issues/{id}/status` |
 | Issue history | GET | `/api/v1/issues/{id}/history` |

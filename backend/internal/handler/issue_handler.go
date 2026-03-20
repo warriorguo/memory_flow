@@ -49,6 +49,33 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeData(w, http.StatusCreated, issue)
 }
 
+func (h *IssueHandler) Search(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		writeError(w, http.StatusBadRequest, "query parameter 'key' is required")
+		return
+	}
+
+	issue, err := h.svc.GetByKey(r.Context(), key)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if issue == nil {
+		writeError(w, http.StatusNotFound, "issue not found")
+		return
+	}
+
+	tags, err := h.tagRepo.GetByIssueID(r.Context(), issue.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	issue.Tags = tags
+
+	writeData(w, http.StatusOK, issue)
+}
+
 func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(chi.URLParam(r, "id"))
 	if err != nil {

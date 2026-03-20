@@ -41,6 +41,7 @@ func (m *MockProjectRepo) IncrementIssueNumber(ctx context.Context, tx pgx.Tx, i
 type MockIssueRepo struct {
 	CreateFn          func(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
 	GetByIDFn         func(ctx context.Context, id uuid.UUID) (*model.Issue, error)
+	GetByKeyFn        func(ctx context.Context, key string) (*model.Issue, error)
 	ListFn            func(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
 	UpdateFn          func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatusFn   func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
@@ -55,6 +56,9 @@ func (m *MockIssueRepo) Create(ctx context.Context, tx pgx.Tx, issueKey string, 
 }
 func (m *MockIssueRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
 	return m.GetByIDFn(ctx, id)
+}
+func (m *MockIssueRepo) GetByKey(ctx context.Context, key string) (*model.Issue, error) {
+	return m.GetByKeyFn(ctx, key)
 }
 func (m *MockIssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error) {
 	return m.ListFn(ctx, filter)
