@@ -19,7 +19,7 @@ func NewMemoryService(repo repository.MemoryRepository) *MemoryService {
 
 var validMemoryTypes = map[string]bool{"recall": true, "write": true}
 
-func (s *MemoryService) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error) {
+func (s *MemoryService) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error) {
 	if req.Type == "" {
 		return nil, fmt.Errorf("memory type is required")
 	}
@@ -35,15 +35,15 @@ func (s *MemoryService) Create(ctx context.Context, req model.CreateMemoryReques
 	return s.repo.Create(ctx, req)
 }
 
-func (s *MemoryService) GetByID(ctx context.Context, id uuid.UUID) (*model.Memory, error) {
+func (s *MemoryService) GetByID(ctx context.Context, id uuid.UUID) (*model.MemoryResponse, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *MemoryService) List(ctx context.Context, filter model.MemoryFilter) ([]model.Memory, int, error) {
+func (s *MemoryService) List(ctx context.Context, filter model.MemoryFilter) ([]model.MemoryResponse, int, error) {
 	return s.repo.List(ctx, filter)
 }
 
-func (s *MemoryService) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error) {
+func (s *MemoryService) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error) {
 	if req.Type != nil && !validMemoryTypes[*req.Type] {
 		return nil, fmt.Errorf("invalid memory type: must be 'recall' or 'write'")
 	}

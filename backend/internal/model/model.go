@@ -67,6 +67,28 @@ type Memory struct {
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
+// MemoryProjectRef is the embedded project info returned in Memory responses.
+type MemoryProjectRef struct {
+	ID   uuid.UUID `json:"id"`
+	Key  string    `json:"key"`
+	Name string    `json:"name"`
+}
+
+// MemoryResponse is the API response struct for a memory, with project info embedded.
+type MemoryResponse struct {
+	ID               uuid.UUID         `json:"id"`
+	ProjectID        *uuid.UUID        `json:"project_id"`
+	Project          *MemoryProjectRef `json:"project,omitempty"`
+	Type             string            `json:"type"`
+	Title            string            `json:"title"`
+	Content          string            `json:"content"`
+	SourceObjectType *string           `json:"source_object_type"`
+	SourceObjectID   *uuid.UUID        `json:"source_object_id"`
+	CreatorID        *string           `json:"creator_id"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
+}
+
 type Tag struct {
 	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`

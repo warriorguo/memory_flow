@@ -97,23 +97,23 @@ func (m *MockIssueHistoryRepo) ListByIssueID(ctx context.Context, issueID uuid.U
 
 // MockMemoryRepo is a mock implementation of repository.MemoryRepository.
 type MockMemoryRepo struct {
-	CreateFn  func(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error)
-	GetByIDFn func(ctx context.Context, id uuid.UUID) (*model.Memory, error)
-	ListFn    func(ctx context.Context, filter model.MemoryFilter) ([]model.Memory, int, error)
-	UpdateFn  func(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error)
+	CreateFn  func(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error)
+	GetByIDFn func(ctx context.Context, id uuid.UUID) (*model.MemoryResponse, error)
+	ListFn    func(ctx context.Context, filter model.MemoryFilter) ([]model.MemoryResponse, int, error)
+	UpdateFn  func(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error)
 	DeleteFn  func(ctx context.Context, id uuid.UUID) error
 }
 
-func (m *MockMemoryRepo) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error) {
+func (m *MockMemoryRepo) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error) {
 	return m.CreateFn(ctx, req)
 }
-func (m *MockMemoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Memory, error) {
+func (m *MockMemoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.MemoryResponse, error) {
 	return m.GetByIDFn(ctx, id)
 }
-func (m *MockMemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]model.Memory, int, error) {
+func (m *MockMemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]model.MemoryResponse, int, error) {
 	return m.ListFn(ctx, filter)
 }
-func (m *MockMemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error) {
+func (m *MockMemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error) {
 	return m.UpdateFn(ctx, id, req)
 }
 func (m *MockMemoryRepo) Delete(ctx context.Context, id uuid.UUID) error {

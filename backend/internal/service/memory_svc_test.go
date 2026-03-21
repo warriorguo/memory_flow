@@ -17,8 +17,8 @@ func newTestMemoryService(repo *mocks.MockMemoryRepo) *MemoryService {
 
 func TestCreateMemory_Success(t *testing.T) {
 	repo := &mocks.MockMemoryRepo{
-		CreateFn: func(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error) {
-			return &model.Memory{
+		CreateFn: func(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error) {
+			return &model.MemoryResponse{
 				ID:        uuid.New(),
 				Type:      req.Type,
 				Title:     req.Title,
@@ -92,8 +92,8 @@ func TestUpdateMemory_Success(t *testing.T) {
 	id := uuid.New()
 	newTitle := "Updated Title"
 	repo := &mocks.MockMemoryRepo{
-		UpdateFn: func(ctx context.Context, uid uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error) {
-			return &model.Memory{
+		UpdateFn: func(ctx context.Context, uid uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error) {
+			return &model.MemoryResponse{
 				ID:        uid,
 				Type:      "recall",
 				Title:     *req.Title,

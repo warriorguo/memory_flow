@@ -70,7 +70,7 @@ func (h *MemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if memories == nil {
-		memories = []model.Memory{}
+		memories = []model.MemoryResponse{}
 	}
 
 	writeList(w, memories, total, filter.Page, filter.PageSize)

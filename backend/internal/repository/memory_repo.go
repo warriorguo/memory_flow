@@ -19,79 +19,102 @@ func NewMemoryRepo(pool *pgxpool.Pool) *MemoryRepo {
 	return &MemoryRepo{pool: pool}
 }
 
-var memoryColumns = `id, project_id, type, title, content, source_object_type, source_object_id, creator_id, created_at, updated_at`
+// memorySelectCols selects memory columns plus project id/key/name via LEFT JOIN.
+const memorySelectCols = `
+	m.id, m.project_id, m.type, m.title, m.content,
+	m.source_object_type, m.source_object_id, m.creator_id,
+	m.created_at, m.updated_at,
+	p.id, p.key, p.name`
 
-func scanMemory(row pgx.Row) (*model.Memory, error) {
-	var m model.Memory
+// scanMemoryResponse scans a row that contains memory columns followed by optional project columns.
+func scanMemoryResponse(row pgx.Row) (*model.MemoryResponse, error) {
+	var mr model.MemoryResponse
+	var projID *uuid.UUID
+	var projKey *string
+	var projName *string
+
 	err := row.Scan(
-		&m.ID, &m.ProjectID, &m.Type, &m.Title, &m.Content,
-		&m.SourceObjectType, &m.SourceObjectID, &m.CreatorID,
-		&m.CreatedAt, &m.UpdatedAt,
+		&mr.ID, &mr.ProjectID, &mr.Type, &mr.Title, &mr.Content,
+		&mr.SourceObjectType, &mr.SourceObjectID, &mr.CreatorID,
+		&mr.CreatedAt, &mr.UpdatedAt,
+		&projID, &projKey, &projName,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return &m, nil
+	if projID != nil && projKey != nil && projName != nil {
+		mr.Project = &model.MemoryProjectRef{
+			ID:   *projID,
+			Key:  *projKey,
+			Name: *projName,
+		}
+	}
+	return &mr, nil
 }
 
-func (r *MemoryRepo) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error) {
-	query := fmt.Sprintf(`
+func (r *MemoryRepo) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error) {
+	// Insert first, then fetch with JOIN so project info is included.
+	insertQuery := `
 		INSERT INTO memories (project_id, type, title, content, source_object_type, source_object_id, creator_id)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING %s`, memoryColumns)
+		RETURNING id`
 
-	row := r.pool.QueryRow(ctx, query,
+	var newID uuid.UUID
+	err := r.pool.QueryRow(ctx, insertQuery,
 		req.ProjectID, req.Type, req.Title, req.Content,
 		req.SourceObjectType, req.SourceObjectID, req.CreatorID,
-	)
-
-	memory, err := scanMemory(row)
+	).Scan(&newID)
 	if err != nil {
 		return nil, fmt.Errorf("create memory: %w", err)
 	}
-	return memory, nil
+	return r.GetByID(ctx, newID)
 }
 
-func (r *MemoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Memory, error) {
-	query := fmt.Sprintf(`SELECT %s FROM memories WHERE id = $1`, memoryColumns)
+func (r *MemoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.MemoryResponse, error) {
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM memories m
+		LEFT JOIN projects p ON p.id = m.project_id
+		WHERE m.id = $1`, memorySelectCols)
+
 	row := r.pool.QueryRow(ctx, query, id)
-	memory, err := scanMemory(row)
+	mr, err := scanMemoryResponse(row)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get memory by id: %w", err)
 	}
-	return memory, nil
+	return mr, nil
 }
 
-func (r *MemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]model.Memory, int, error) {
+func (r *MemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]model.MemoryResponse, int, error) {
 	var conditions []string
 	var args []interface{}
 	argIdx := 1
 
 	if filter.ProjectID != nil {
-		conditions = append(conditions, fmt.Sprintf("project_id = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("m.project_id = $%d", argIdx))
 		args = append(args, *filter.ProjectID)
 		argIdx++
 	}
 	if filter.Type != nil {
-		conditions = append(conditions, fmt.Sprintf("type = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("m.type = $%d", argIdx))
 		args = append(args, *filter.Type)
 		argIdx++
 	}
 	if filter.Keyword != nil {
-		conditions = append(conditions, fmt.Sprintf("(title ILIKE $%d OR content ILIKE $%d)", argIdx, argIdx))
+		conditions = append(conditions, fmt.Sprintf("(m.title ILIKE $%d OR m.content ILIKE $%d)", argIdx, argIdx))
 		args = append(args, "%"+escapeLike(*filter.Keyword)+"%")
 		argIdx++
 	}
 	if filter.SourceObjectType != nil {
-		conditions = append(conditions, fmt.Sprintf("source_object_type = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("m.source_object_type = $%d", argIdx))
 		args = append(args, *filter.SourceObjectType)
 		argIdx++
 	}
 	if filter.SourceObjectID != nil {
-		conditions = append(conditions, fmt.Sprintf("source_object_id = $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("m.source_object_id = $%d", argIdx))
 		args = append(args, *filter.SourceObjectID)
 		argIdx++
 	}
@@ -106,9 +129,11 @@ func (r *MemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]mod
 
 	query := fmt.Sprintf(`
 		SELECT %s, COUNT(*) OVER() AS total
-		FROM memories %s
-		ORDER BY created_at DESC
-		LIMIT $%d OFFSET $%d`, memoryColumns, where, argIdx, argIdx+1)
+		FROM memories m
+		LEFT JOIN projects p ON p.id = m.project_id
+		%s
+		ORDER BY m.created_at DESC
+		LIMIT $%d OFFSET $%d`, memorySelectCols, where, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -117,24 +142,37 @@ func (r *MemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]mod
 	}
 	defer rows.Close()
 
-	var memories []model.Memory
+	var memories []model.MemoryResponse
 	var total int
 	for rows.Next() {
-		var m model.Memory
+		var mr model.MemoryResponse
+		var projID *uuid.UUID
+		var projKey *string
+		var projName *string
+
 		err := rows.Scan(
-			&m.ID, &m.ProjectID, &m.Type, &m.Title, &m.Content,
-			&m.SourceObjectType, &m.SourceObjectID, &m.CreatorID,
-			&m.CreatedAt, &m.UpdatedAt, &total,
+			&mr.ID, &mr.ProjectID, &mr.Type, &mr.Title, &mr.Content,
+			&mr.SourceObjectType, &mr.SourceObjectID, &mr.CreatorID,
+			&mr.CreatedAt, &mr.UpdatedAt,
+			&projID, &projKey, &projName,
+			&total,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("scan memory: %w", err)
 		}
-		memories = append(memories, m)
+		if projID != nil && projKey != nil && projName != nil {
+			mr.Project = &model.MemoryProjectRef{
+				ID:   *projID,
+				Key:  *projKey,
+				Name: *projName,
+			}
+		}
+		memories = append(memories, mr)
 	}
 	return memories, total, rows.Err()
 }
 
-func (r *MemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error) {
+func (r *MemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error) {
 	var setClauses []string
 	var args []interface{}
 	argIdx := 1
@@ -162,20 +200,18 @@ func (r *MemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateM
 	setClauses = append(setClauses, "updated_at = now()")
 	args = append(args, id)
 
-	query := fmt.Sprintf(`
-		UPDATE memories SET %s WHERE id = $%d
-		RETURNING %s`,
-		strings.Join(setClauses, ", "), argIdx, memoryColumns)
+	updateQuery := fmt.Sprintf(`
+		UPDATE memories SET %s WHERE id = $%d`,
+		strings.Join(setClauses, ", "), argIdx)
 
-	row := r.pool.QueryRow(ctx, query, args...)
-	memory, err := scanMemory(row)
+	ct, err := r.pool.Exec(ctx, updateQuery, args...)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("update memory: %w", err)
 	}
-	return memory, nil
+	if ct.RowsAffected() == 0 {
+		return nil, nil
+	}
+	return r.GetByID(ctx, id)
 }
 
 func (r *MemoryRepo) Delete(ctx context.Context, id uuid.UUID) error {

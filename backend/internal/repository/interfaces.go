@@ -40,10 +40,10 @@ type IssueHistoryRepository interface {
 
 // MemoryRepository defines the interface for memory data access.
 type MemoryRepository interface {
-	Create(ctx context.Context, req model.CreateMemoryRequest) (*model.Memory, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*model.Memory, error)
-	List(ctx context.Context, filter model.MemoryFilter) ([]model.Memory, int, error)
-	Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.Memory, error)
+	Create(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*model.MemoryResponse, error)
+	List(ctx context.Context, filter model.MemoryFilter) ([]model.MemoryResponse, int, error)
+	Update(ctx context.Context, id uuid.UUID, req model.UpdateMemoryRequest) (*model.MemoryResponse, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
