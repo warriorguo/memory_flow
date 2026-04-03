@@ -6,7 +6,7 @@ import { getProgressSummary, getProgressTrend } from '../../api/issue';
 import { useParams } from 'react-router-dom';
 import { ISSUE_STATUS_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
-import KanbanBoard from '../KanbanBoard';
+
 
 interface Props {
   projectId?: string;
@@ -117,9 +117,6 @@ const ProgressDashboard: React.FC<Props> = ({ projectId: propProjectId }) => {
         </Card>
       )}
 
-      <Card title="看板">
-        <KanbanBoard projectId={projectId} />
-      </Card>
     </div>
   );
 };

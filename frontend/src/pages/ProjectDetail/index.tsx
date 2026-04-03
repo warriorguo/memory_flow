@@ -5,11 +5,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProject, updateProject } from '../../api/project';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import IssueListView from '../IssueList';
+import KanbanBoard from '../KanbanBoard';
 import ProgressDashboard from '../ProgressDashboard';
 import MemoryListView from '../MemoryList';
 import dayjs from 'dayjs';
 
-const TAB_KEYS = ['overview', 'issues', 'progress', 'memory'] as const;
+const TAB_KEYS = ['overview', 'issues', 'kanban', 'progress', 'memory'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function getTabFromHash(hash: string): TabKey {
@@ -99,6 +100,11 @@ const ProjectDetail: React.FC = () => {
       key: 'issues',
       label: '需求 / Bug',
       children: <IssueListView projectId={projectId!} />,
+    },
+    {
+      key: 'kanban',
+      label: '看板',
+      children: <KanbanBoard projectId={projectId!} />,
     },
     {
       key: 'progress',
