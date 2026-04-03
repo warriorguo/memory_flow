@@ -7,7 +7,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { listIssues, transitionIssueStatus, createIssue } from '../../api/issue';
 import { useNavigate, useParams } from 'react-router-dom';
 import IssueCard from '../../components/IssueCard';
-import { ISSUE_STATUS_LABELS, ALLOWED_TRANSITIONS, PRIORITY_COLORS } from '../../types/common';
+import { ISSUE_STATUS_LABELS, ALLOWED_TRANSITIONS } from '../../types/common';
 import type { Issue, CreateIssueRequest } from '../../types/issue';
 import type { IssueStatus, IssueType, Priority } from '../../types/common';
 
