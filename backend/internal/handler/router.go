@@ -11,6 +11,7 @@ func NewRouter(
 	progressHandler *ProgressHandler,
 	memoryHandler *MemoryHandler,
 	tagHandler *TagHandler,
+	dependencyHandler *DependencyHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -35,6 +36,13 @@ func NewRouter(
 		r.Put("/issues/{id}", issueHandler.Update)
 		r.Patch("/issues/{id}/status", issueHandler.TransitionStatus)
 		r.Get("/issues/{id}/history", issueHandler.GetHistory)
+
+		// Issue dependencies
+		r.Post("/issues/{id}/dependencies", dependencyHandler.Create)
+		r.Get("/issues/{id}/dependencies", dependencyHandler.List)
+		r.Delete("/issues/{id}/dependencies/{depId}", dependencyHandler.Delete)
+		r.Get("/issues/{id}/dependency-tree", dependencyHandler.GetTree)
+		r.Get("/issues/{id}/effective-priority", dependencyHandler.GetEffectivePriority)
 
 		// Issue tags
 		r.Post("/issues/{id}/tags", tagHandler.AddToIssue)

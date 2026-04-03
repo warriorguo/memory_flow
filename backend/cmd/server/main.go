@@ -48,12 +48,14 @@ func main() {
 	issueHistoryRepo := repository.NewIssueHistoryRepo(pool)
 	memoryRepo := repository.NewMemoryRepo(pool)
 	tagRepo := repository.NewTagRepo(pool)
+	depRepo := repository.NewDependencyRepo(pool)
 
 	// Initialize services
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, issueHistoryRepo)
 	progressSvc := service.NewProgressService(issueRepo)
 	memorySvc := service.NewMemoryService(memoryRepo)
+	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 
 	// Initialize handlers
 	projectHandler := handler.NewProjectHandler(projectSvc)
@@ -61,6 +63,7 @@ func main() {
 	progressHandler := handler.NewProgressHandler(progressSvc)
 	memoryHandler := handler.NewMemoryHandler(memorySvc)
 	tagHandler := handler.NewTagHandler(tagRepo)
+	depHandler := handler.NewDependencyHandler(depSvc)
 
 	// Set up router
 	router := handler.NewRouter(
@@ -69,6 +72,7 @@ func main() {
 		progressHandler,
 		memoryHandler,
 		tagHandler,
+		depHandler,
 	)
 
 	// Start server

@@ -60,6 +60,17 @@ type TagRepository interface {
 	GetByMemoryID(ctx context.Context, memoryID uuid.UUID) ([]model.Tag, error)
 }
 
+// DependencyRepository defines the interface for issue dependency data access.
+type DependencyRepository interface {
+	Create(ctx context.Context, dep model.IssueDependency) (*model.IssueDependency, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	GetDependsOn(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	GetBlocks(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	// HasPath checks if there is a directed path from sourceID to targetID via depends_on edges.
+	HasPath(ctx context.Context, sourceID, targetID uuid.UUID) (bool, error)
+}
+
 // UserRepository defines the interface for user data access.
 type UserRepository interface {
 	Create(ctx context.Context, username, passwordHash string, displayName *string, role string) (*model.User, error)

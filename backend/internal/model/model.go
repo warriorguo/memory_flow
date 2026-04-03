@@ -89,6 +89,42 @@ type MemoryResponse struct {
 	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
+type IssueDependency struct {
+	ID            uuid.UUID `json:"id"`
+	SourceIssueID uuid.UUID `json:"source_issue_id"`
+	TargetIssueID uuid.UUID `json:"target_issue_id"`
+	Type          string    `json:"type"`     // "depends_on" or "blocks"
+	Severity      string    `json:"severity"` // "critical" or "recommended"
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// DependencyNode represents a node in the dependency tree.
+type DependencyNode struct {
+	IssueID     uuid.UUID         `json:"issue_id"`
+	IssueKey    string            `json:"issue_key"`
+	Title       string            `json:"title"`
+	Status      string            `json:"status"`
+	Priority    string            `json:"priority"`
+	ProjectID   uuid.UUID         `json:"project_id"`
+	ProjectKey  string            `json:"project_key"`
+	ProjectName string            `json:"project_name"`
+	Severity    string            `json:"severity"`
+	DependsOn   []*DependencyNode `json:"depends_on,omitempty"`
+	Blocks      []*DependencyNode `json:"blocks,omitempty"`
+}
+
+// DependencyDetail is a dependency with full issue info for list responses.
+type DependencyDetail struct {
+	ID            uuid.UUID `json:"id"`
+	SourceIssueID uuid.UUID `json:"source_issue_id"`
+	TargetIssueID uuid.UUID `json:"target_issue_id"`
+	Type          string    `json:"type"`
+	Severity      string    `json:"severity"`
+	CreatedAt     time.Time `json:"created_at"`
+	TargetIssue   *Issue    `json:"target_issue,omitempty"`
+	SourceIssue   *Issue    `json:"source_issue,omitempty"`
+}
+
 type Tag struct {
 	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
@@ -185,6 +221,12 @@ type CreateTagRequest struct {
 
 type AddTagRequest struct {
 	TagID uuid.UUID `json:"tag_id"`
+}
+
+type CreateDependencyRequest struct {
+	TargetIssueID uuid.UUID `json:"target_issue_id"`
+	Type          string    `json:"type"`     // "depends_on" or "blocks"
+	Severity      string    `json:"severity"` // "critical" or "recommended"
 }
 
 type LoginRequest struct {

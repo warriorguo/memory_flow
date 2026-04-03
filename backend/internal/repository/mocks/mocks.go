@@ -161,6 +161,35 @@ func (m *MockTagRepo) GetByMemoryID(ctx context.Context, memoryID uuid.UUID) ([]
 	return m.GetByMemoryIDFn(ctx, memoryID)
 }
 
+// MockDependencyRepo is a mock implementation of repository.DependencyRepository.
+type MockDependencyRepo struct {
+	CreateFn        func(ctx context.Context, dep model.IssueDependency) (*model.IssueDependency, error)
+	DeleteFn        func(ctx context.Context, id uuid.UUID) error
+	ListByIssueIDFn func(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	GetDependsOnFn  func(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	GetBlocksFn     func(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error)
+	HasPathFn       func(ctx context.Context, sourceID, targetID uuid.UUID) (bool, error)
+}
+
+func (m *MockDependencyRepo) Create(ctx context.Context, dep model.IssueDependency) (*model.IssueDependency, error) {
+	return m.CreateFn(ctx, dep)
+}
+func (m *MockDependencyRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	return m.DeleteFn(ctx, id)
+}
+func (m *MockDependencyRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error) {
+	return m.ListByIssueIDFn(ctx, issueID)
+}
+func (m *MockDependencyRepo) GetDependsOn(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error) {
+	return m.GetDependsOnFn(ctx, issueID)
+}
+func (m *MockDependencyRepo) GetBlocks(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error) {
+	return m.GetBlocksFn(ctx, issueID)
+}
+func (m *MockDependencyRepo) HasPath(ctx context.Context, sourceID, targetID uuid.UUID) (bool, error) {
+	return m.HasPathFn(ctx, sourceID, targetID)
+}
+
 // MockUserRepo is a mock implementation of repository.UserRepository.
 type MockUserRepo struct {
 	CreateFn        func(ctx context.Context, username, passwordHash string, displayName *string, role string) (*model.User, error)
