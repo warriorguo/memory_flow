@@ -14,7 +14,7 @@ compatibility: Requires network access to the Memory Flow API
 allowed-tools: Bash(curl:*)
 metadata:
   author: warriorguo
-  version: "2.0"
+  version: "3.0"
   service-url: "https://memory-flow.local.playquota.com"
 ---
 
@@ -93,7 +93,37 @@ Query params (all optional):
 
 **Present results as a clean table:** Key | Title | Type | Priority | Status | Assignee
 
-### Create Issue
+### Filing Issues (Analyze-then-Create Workflow)
+
+When a user describes a bug or requirement, follow this workflow **before** creating any issues:
+
+#### Step 1: Analyze scope and complexity
+
+Before creating issues, analyze the user's description:
+- Does it involve multiple subsystems (e.g., backend + frontend, or multiple services)?
+- Are there sequential implementation steps with dependencies?
+- Does it mix different types (e.g., a bug fix + a new feature)?
+- Is it a single, well-scoped change?
+
+**If the answer is "single, well-scoped change"** -- skip to Step 3 (create one issue directly).
+
+#### Step 2: Propose decomposition (if needed)
+
+Present a decomposition plan to the user before creating anything:
+
+> **Proposed issue breakdown:**
+>
+> 1. `[requirement]` P1 -- Title of first issue
+> 2. `[requirement]` P2 -- Title of second issue
+> 3. `[bug]` P1 -- Title of third issue
+>
+> **Dependencies:**
+> - #2 depends on #1 (critical) -- cannot start without #1's API
+> - #3 depends on #1 (recommended) -- related but not blocking
+
+Wait for the user to confirm, adjust, or override before proceeding.
+
+#### Step 3: Create issues
 
 ```bash
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues" \
@@ -115,7 +145,22 @@ Priority guidelines:
 - **P1**: Important but not blocking core flow
 - **P2**: Normal, can be scheduled
 
+When creating multiple issues from a decomposition, create them in dependency order (dependencies first) so that IDs are available for linking.
+
 After creation, confirm with the issue key (e.g., "MF-3").
+
+#### Step 4: Set dependencies (if decomposed)
+
+After batch-creating issues, automatically set dependencies using the dependency API (see "Issue Dependencies" section below). Ensure:
+- Dependency direction is correct (`depends_on` vs `blocks`)
+- Severity is correct (`critical` for hard blockers, `recommended` for soft associations)
+
+Report the final result as a summary table:
+
+> | Key | Title | Type | Priority | Depends On |
+> |-----|-------|------|----------|------------|
+> | MF-9 | Backend API for X | requirement | P1 | -- |
+> | MF-10 | Frontend for X | requirement | P2 | MF-9 (critical) |
 
 ### Get Issue by Key
 
@@ -170,6 +215,57 @@ rejected    -> todo
 ```bash
 curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history" | python3 -m json.tool
 ```
+
+---
+
+## Issue Dependencies
+
+Dependencies express relationships between issues, including across projects (e.g., ORT-20 depends on MF-5).
+
+### Create Dependency
+
+```bash
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_issue_id": "{targetIssueUUID}",
+    "type": "depends_on",
+    "severity": "critical"
+  }' | python3 -m json.tool
+```
+
+- `type`: `depends_on` (this issue needs the target) or `blocks` (this issue blocks the target)
+- `severity`: `critical` (hard blocker -- target must be done first; priority inherits upward) or `recommended` (soft association, no priority inheritance)
+
+### List Dependencies
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies" | python3 -m json.tool
+```
+
+Returns dependencies with full issue details for both source and target.
+
+### Delete Dependency
+
+```bash
+curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies/{depId}"
+```
+
+### Get Dependency Tree
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependency-tree" | python3 -m json.tool
+```
+
+Returns a tree structure with the issue as root, expanding `depends_on` downward and `blocks` upward. Each node includes: `issue_key`, `title`, `status`, `priority`, `project_key`, `project_name`, `severity`.
+
+### Get Effective Priority
+
+```bash
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/effective-priority" | python3 -m json.tool
+```
+
+Returns the effective priority considering critical dependency chains (inherits the highest priority from the chain).
 
 ---
 
@@ -288,6 +384,11 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memory
 | Update issue | PUT | `/api/v1/issues/{id}` |
 | Transition status | PATCH | `/api/v1/issues/{id}/status` |
 | Issue history | GET | `/api/v1/issues/{id}/history` |
+| Create dependency | POST | `/api/v1/issues/{id}/dependencies` |
+| List dependencies | GET | `/api/v1/issues/{id}/dependencies` |
+| Delete dependency | DELETE | `/api/v1/issues/{id}/dependencies/{depId}` |
+| Dependency tree | GET | `/api/v1/issues/{id}/dependency-tree` |
+| Effective priority | GET | `/api/v1/issues/{id}/effective-priority` |
 | Progress summary | GET | `/api/v1/projects/{id}/progress/summary` |
 | Progress trend | GET | `/api/v1/projects/{id}/progress/trend` |
 | List memories | GET | `/api/v1/memories` |
@@ -352,3 +453,5 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId
 6. **Summarize in natural language** for progress queries, don't dump raw JSON
 7. **No auth needed** — all endpoints are public, just call them directly
 8. **Completing issues**: always fill `git_url` and use `[ISSUE_KEY] description` format in commits before marking done
+9. **Analyze before filing**: always evaluate whether a request should be one issue or multiple before creating anything. Present the decomposition plan and wait for user confirmation.
+10. **Set dependencies after batch creation**: when creating multiple related issues, always establish dependency links using the dependency API. Use `critical` severity for hard blockers and `recommended` for soft associations.
