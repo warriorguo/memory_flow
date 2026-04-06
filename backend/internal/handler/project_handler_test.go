@@ -152,3 +152,38 @@ func TestListProjects_Handler_Success(t *testing.T) {
 		t.Errorf("expected total 1, got %d", resp.Total)
 	}
 }
+
+func TestListProjects_Handler_NameFilter(t *testing.T) {
+	h, repo := newTestProjectHandler()
+
+	var capturedFilter model.ProjectFilter
+	repo.ListFn = func(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error) {
+		capturedFilter = filter
+		return []model.Project{
+			{ID: uuid.New(), Key: "ORT", Name: "OZX Room Template", Status: "active"},
+		}, 1, nil
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects?name=ORT", nil)
+	w := httptest.NewRecorder()
+
+	h.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+	if capturedFilter.Name == nil {
+		t.Fatal("expected name filter to be set, got nil")
+	}
+	if *capturedFilter.Name != "ORT" {
+		t.Errorf("expected name filter 'ORT', got %q", *capturedFilter.Name)
+	}
+
+	var resp listResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Total != 1 {
+		t.Errorf("expected total 1, got %d", resp.Total)
+	}
+}

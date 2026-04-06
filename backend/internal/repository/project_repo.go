@@ -70,7 +70,7 @@ func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]m
 	argIdx := 1
 
 	if filter.Name != nil {
-		conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
+		conditions = append(conditions, fmt.Sprintf("(name ILIKE $%d OR key ILIKE $%d)", argIdx, argIdx))
 		args = append(args, "%"+escapeLike(*filter.Name)+"%")
 		argIdx++
 	}
