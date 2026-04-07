@@ -14,7 +14,7 @@ compatibility: Requires network access to the Memory Flow API
 allowed-tools: Bash(curl:*)
 metadata:
   author: warriorguo
-  version: "3.0"
+  version: "4.0"
   service-url: "https://memory-flow.local.playquota.com"
 ---
 
@@ -30,6 +30,19 @@ API Prefix: /api/v1
 ```
 
 No authentication required. All API endpoints are public.
+
+## Initialization (Run on Every Activation)
+
+**IMPORTANT:** Every time this skill is activated, you MUST first list all projects to understand the landscape before doing anything else:
+
+```bash
+curl -s https://memory-flow.local.playquota.com/api/v1/projects | python3 -m json.tool
+```
+
+Review the returned projects and internalize each project's **key**, **name**, **summary**, and **scope** so you can:
+- Route issues to the correct project when filing bugs/requirements
+- Understand which project the user is referring to by context (e.g. a frontend bug likely belongs to a project with a frontend scope)
+- Avoid asking the user which project to use when it's obvious from context
 
 ---
 
@@ -62,17 +75,19 @@ Optional: `summary`, `description`, `design_principles`, `git_url`, `cicd_url`, 
 
 ### Get / Update / Archive Project
 
-```bash
-# Get
-curl -s https://memory-flow.local.playquota.com/api/v1/projects/{id} | python3 -m json.tool
+Use the project key (e.g. `MF`) or UUID in the URL path:
 
-# Update
-curl -s -X PUT https://memory-flow.local.playquota.com/api/v1/projects/{id} \
+```bash
+# Get by key
+curl -s https://memory-flow.local.playquota.com/api/v1/projects/MF | python3 -m json.tool
+
+# Update by key
+curl -s -X PUT https://memory-flow.local.playquota.com/api/v1/projects/MF \
   -H "Content-Type: application/json" \
   -d '{"name": "New Name", "status": "active"}' | python3 -m json.tool
 
-# Archive
-curl -s -X DELETE https://memory-flow.local.playquota.com/api/v1/projects/{id} | python3 -m json.tool
+# Archive by key
+curl -s -X DELETE https://memory-flow.local.playquota.com/api/v1/projects/MF | python3 -m json.tool
 ```
 
 ---
@@ -82,7 +97,7 @@ curl -s -X DELETE https://memory-flow.local.playquota.com/api/v1/projects/{id} |
 ### List Issues
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues?page=1&page_size=20" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/MF/issues?page=1&page_size=20" | python3 -m json.tool
 ```
 
 Query params (all optional):
@@ -126,7 +141,7 @@ Wait for the user to confirm, adjust, or override before proceeding.
 #### Step 3: Create issues
 
 ```bash
-curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/issues" \
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/MF/issues" \
   -H "Content-Type: application/json" \
   -d '{
     "type": "bug",
@@ -170,16 +185,18 @@ Look up an issue directly by its key (e.g., MF-1, OZX-22):
 curl -s "https://memory-flow.local.playquota.com/api/v1/issues?key=MF-1" | python3 -m json.tool
 ```
 
-### Get Issue Detail by ID
+### Get Issue Detail
+
+Use the issue key (e.g. `MF-1`) or UUID in the URL path:
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/MF-1" | python3 -m json.tool
 ```
 
 ### Update Issue
 
 ```bash
-curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" \
+curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/MF-1" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Updated title",
@@ -194,7 +211,7 @@ All field changes are automatically tracked in issue history.
 ### Transition Issue Status
 
 ```bash
-curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/status" \
+curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/MF-1/status" \
   -H "Content-Type: application/json" \
   -d '{"status": "in_progress"}' | python3 -m json.tool
 ```
@@ -213,7 +230,7 @@ rejected    -> todo
 ### Get Issue History
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/history" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/MF-1/history" | python3 -m json.tool
 ```
 
 ---
@@ -225,7 +242,7 @@ Dependencies express relationships between issues, including across projects (e.
 ### Create Dependency
 
 ```bash
-curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies" \
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/MF-2/dependencies" \
   -H "Content-Type: application/json" \
   -d '{
     "target_issue_id": "{targetIssueUUID}",
@@ -234,13 +251,15 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}
   }' | python3 -m json.tool
 ```
 
+Note: The URL path accepts issue key or UUID, but `target_issue_id` in the body must still be a UUID.
+
 - `type`: `depends_on` (this issue needs the target) or `blocks` (this issue blocks the target)
 - `severity`: `critical` (hard blocker -- target must be done first; priority inherits upward) or `recommended` (soft association, no priority inheritance)
 
 ### List Dependencies
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/MF-2/dependencies" | python3 -m json.tool
 ```
 
 Returns dependencies with full issue details for both source and target.
@@ -248,13 +267,13 @@ Returns dependencies with full issue details for both source and target.
 ### Delete Dependency
 
 ```bash
-curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependencies/{depId}"
+curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/MF-2/dependencies/{depId}"
 ```
 
 ### Get Dependency Tree
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/dependency-tree" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/MF-2/dependency-tree" | python3 -m json.tool
 ```
 
 Returns a tree structure with the issue as root, expanding `depends_on` downward and `blocks` upward. Each node includes: `issue_key`, `title`, `status`, `priority`, `project_key`, `project_name`, `severity`.
@@ -262,7 +281,7 @@ Returns a tree structure with the issue as root, expanding `depends_on` downward
 ### Get Effective Priority
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/effective-priority" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/issues/MF-2/effective-priority" | python3 -m json.tool
 ```
 
 Returns the effective priority considering critical dependency chains (inherits the highest priority from the chain).
@@ -323,7 +342,7 @@ curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/memories/{id}"
 ### Progress Summary
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/summary" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/MF/progress/summary" | python3 -m json.tool
 ```
 
 Returns: `status_counts` (map), `priority_counts` (map), `type_counts` (map), `total`.
@@ -334,7 +353,7 @@ Returns: `status_counts` (map), `priority_counts` (map), `type_counts` (map), `t
 ### Trend Data
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/{projectId}/progress/trend?days=30" | python3 -m json.tool
+curl -s "https://memory-flow.local.playquota.com/api/v1/projects/MF/progress/trend?days=30" | python3 -m json.tool
 ```
 
 Returns daily `created` and `done` counts.
@@ -352,13 +371,13 @@ curl -s -X POST https://memory-flow.local.playquota.com/api/v1/tags \
   -H "Content-Type: application/json" \
   -d '{"name": "frontend", "color": "#1890ff"}' | python3 -m json.tool
 
-# Add tag to issue
-curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/tags" \
+# Add tag to issue (accepts issue key or UUID)
+curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/issues/MF-1/tags" \
   -H "Content-Type: application/json" \
   -d '{"tag_id": "{tagId}"}' | python3 -m json.tool
 
 # Remove tag from issue
-curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/tags/{tagId}"
+curl -s -X DELETE "https://memory-flow.local.playquota.com/api/v1/issues/MF-1/tags/{tagId}"
 
 # Add/remove tag to/from memory (same pattern)
 curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memoryId}/tags" \
@@ -374,23 +393,23 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memory
 |--------|--------|----------|
 | List projects | GET | `/api/v1/projects` |
 | Create project | POST | `/api/v1/projects` |
-| Get project | GET | `/api/v1/projects/{id}` |
-| Update project | PUT | `/api/v1/projects/{id}` |
-| Archive project | DELETE | `/api/v1/projects/{id}` |
-| List issues | GET | `/api/v1/projects/{projectId}/issues` |
-| Create issue | POST | `/api/v1/projects/{projectId}/issues` |
+| Get project | GET | `/api/v1/projects/{key}` |
+| Update project | PUT | `/api/v1/projects/{key}` |
+| Archive project | DELETE | `/api/v1/projects/{key}` |
+| List issues | GET | `/api/v1/projects/{key}/issues` |
+| Create issue | POST | `/api/v1/projects/{key}/issues` |
 | Search issue by key | GET | `/api/v1/issues?key={issueKey}` |
-| Get issue by ID | GET | `/api/v1/issues/{id}` |
-| Update issue | PUT | `/api/v1/issues/{id}` |
-| Transition status | PATCH | `/api/v1/issues/{id}/status` |
-| Issue history | GET | `/api/v1/issues/{id}/history` |
-| Create dependency | POST | `/api/v1/issues/{id}/dependencies` |
-| List dependencies | GET | `/api/v1/issues/{id}/dependencies` |
-| Delete dependency | DELETE | `/api/v1/issues/{id}/dependencies/{depId}` |
-| Dependency tree | GET | `/api/v1/issues/{id}/dependency-tree` |
-| Effective priority | GET | `/api/v1/issues/{id}/effective-priority` |
-| Progress summary | GET | `/api/v1/projects/{id}/progress/summary` |
-| Progress trend | GET | `/api/v1/projects/{id}/progress/trend` |
+| Get issue | GET | `/api/v1/issues/{issueKey}` |
+| Update issue | PUT | `/api/v1/issues/{issueKey}` |
+| Transition status | PATCH | `/api/v1/issues/{issueKey}/status` |
+| Issue history | GET | `/api/v1/issues/{issueKey}/history` |
+| Create dependency | POST | `/api/v1/issues/{issueKey}/dependencies` |
+| List dependencies | GET | `/api/v1/issues/{issueKey}/dependencies` |
+| Delete dependency | DELETE | `/api/v1/issues/{issueKey}/dependencies/{depId}` |
+| Dependency tree | GET | `/api/v1/issues/{issueKey}/dependency-tree` |
+| Effective priority | GET | `/api/v1/issues/{issueKey}/effective-priority` |
+| Progress summary | GET | `/api/v1/projects/{key}/progress/summary` |
+| Progress trend | GET | `/api/v1/projects/{key}/progress/trend` |
 | List memories | GET | `/api/v1/memories` |
 | Create memory | POST | `/api/v1/memories` |
 | Get memory | GET | `/api/v1/memories/{id}` |
@@ -398,10 +417,12 @@ curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/memories/{memory
 | Delete memory | DELETE | `/api/v1/memories/{id}` |
 | List tags | GET | `/api/v1/tags` |
 | Create tag | POST | `/api/v1/tags` |
-| Add tag to issue | POST | `/api/v1/issues/{id}/tags` |
-| Remove tag from issue | DELETE | `/api/v1/issues/{id}/tags/{tagId}` |
+| Add tag to issue | POST | `/api/v1/issues/{issueKey}/tags` |
+| Remove tag from issue | DELETE | `/api/v1/issues/{issueKey}/tags/{tagId}` |
 | Add tag to memory | POST | `/api/v1/memories/{id}/tags` |
 | Remove tag from memory | DELETE | `/api/v1/memories/{id}/tags/{tagId}` |
+
+> **Note:** All `{key}` and `{issueKey}` placeholders also accept UUIDs for backward compatibility.
 
 ## Response Format
 
@@ -418,7 +439,7 @@ When an issue is done, you **MUST** follow these steps before marking it as `don
 1. **Fill `git_url`** — update the issue with the commit URL or PR link. This field must NOT be left empty.
 
 ```bash
-curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}" \
+curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/MF-1" \
   -H "Content-Type: application/json" \
   -d '{"git_url": "https://github.com/owner/repo/commit/{sha}"}' | python3 -m json.tool
 ```
@@ -436,7 +457,7 @@ Examples:
 3. **Transition to done** — only after `git_url` is set.
 
 ```bash
-curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/{issueId}/status" \
+curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/MF-1/status" \
   -H "Content-Type: application/json" \
   -d '{"status": "done"}' | python3 -m json.tool
 ```
