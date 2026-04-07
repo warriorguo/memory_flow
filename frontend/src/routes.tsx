@@ -12,8 +12,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'projects', element: <ProjectList /> },
-      { path: 'projects/:projectId', element: <ProjectDetail /> },
-      { path: 'issues/:id', element: <IssueDetail /> },
+      { path: 'projects/:projectKey', element: <ProjectDetail /> },
+      { path: 'issues/:issueKey', element: <IssueDetail /> },
       { path: 'memories', element: <MemoryList /> },
     ],
   },

@@ -19,7 +19,11 @@ import (
 func newTestProjectHandler() (*ProjectHandler, *mocks.MockProjectRepo) {
 	repo := &mocks.MockProjectRepo{}
 	svc := service.NewProjectService(repo)
-	h := NewProjectHandler(svc)
+	issueRepo := &mocks.MockIssueRepo{}
+	historyRepo := &mocks.MockIssueHistoryRepo{}
+	issueSvc := service.NewIssueService(issueRepo, repo, historyRepo)
+	resolver := NewIDResolver(svc, issueSvc)
+	h := NewProjectHandler(svc, resolver)
 	return h, repo
 }
 

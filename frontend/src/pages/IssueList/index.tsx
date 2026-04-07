@@ -48,7 +48,7 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
       title: '标题',
       dataIndex: 'title',
       render: (title: string, record: Issue) => (
-        <a onClick={() => navigate(`/issues/${record.id}`)}>{title}</a>
+        <a onClick={() => navigate(`/issues/${record.issue_key}`)}>{title}</a>
       ),
     },
     {

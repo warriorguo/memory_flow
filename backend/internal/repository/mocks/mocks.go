@@ -12,6 +12,7 @@ import (
 type MockProjectRepo struct {
 	CreateFn               func(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error)
 	GetByIDFn              func(ctx context.Context, id uuid.UUID) (*model.Project, error)
+	GetByKeyFn             func(ctx context.Context, key string) (*model.Project, error)
 	ListFn                 func(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error)
 	UpdateFn               func(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	ArchiveFn              func(ctx context.Context, id uuid.UUID) error
@@ -23,6 +24,12 @@ func (m *MockProjectRepo) Create(ctx context.Context, req model.CreateProjectReq
 }
 func (m *MockProjectRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Project, error) {
 	return m.GetByIDFn(ctx, id)
+}
+func (m *MockProjectRepo) GetByKey(ctx context.Context, key string) (*model.Project, error) {
+	if m.GetByKeyFn != nil {
+		return m.GetByKeyFn(ctx, key)
+	}
+	return nil, nil
 }
 func (m *MockProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error) {
 	return m.ListFn(ctx, filter)

@@ -38,6 +38,10 @@ func (s *ProjectService) GetByID(ctx context.Context, id uuid.UUID) (*model.Proj
 	return s.repo.GetByID(ctx, id)
 }
 
+func (s *ProjectService) GetByKey(ctx context.Context, key string) (*model.Project, error) {
+	return s.repo.GetByKey(ctx, key)
+}
+
 func (s *ProjectService) List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error) {
 	return s.repo.List(ctx, filter)
 }

@@ -9,17 +9,18 @@ import (
 )
 
 type DependencyHandler struct {
-	svc *service.DependencyService
+	svc      *service.DependencyService
+	resolver *IDResolver
 }
 
-func NewDependencyHandler(svc *service.DependencyService) *DependencyHandler {
-	return &DependencyHandler{svc: svc}
+func NewDependencyHandler(svc *service.DependencyService, resolver *IDResolver) *DependencyHandler {
+	return &DependencyHandler{svc: svc, resolver: resolver}
 }
 
 func (h *DependencyHandler) Create(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -54,9 +55,9 @@ func (h *DependencyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DependencyHandler) List(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -74,9 +75,9 @@ func (h *DependencyHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DependencyHandler) GetTree(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -90,9 +91,9 @@ func (h *DependencyHandler) GetTree(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DependencyHandler) GetEffectivePriority(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

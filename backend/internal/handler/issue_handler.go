@@ -11,18 +11,19 @@ import (
 )
 
 type IssueHandler struct {
-	svc     *service.IssueService
-	tagRepo repository.TagRepository
+	svc      *service.IssueService
+	tagRepo  repository.TagRepository
+	resolver *IDResolver
 }
 
-func NewIssueHandler(svc *service.IssueService, tagRepo repository.TagRepository) *IssueHandler {
-	return &IssueHandler{svc: svc, tagRepo: tagRepo}
+func NewIssueHandler(svc *service.IssueService, tagRepo repository.TagRepository, resolver *IDResolver) *IssueHandler {
+	return &IssueHandler{svc: svc, tagRepo: tagRepo, resolver: resolver}
 }
 
 func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseUUID(chi.URLParam(r, "projectId"))
+	projectID, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "projectId"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -77,9 +78,9 @@ func (h *IssueHandler) Search(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -104,9 +105,9 @@ func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IssueHandler) ListByProject(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseUUID(chi.URLParam(r, "projectId"))
+	projectID, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "projectId"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -137,9 +138,9 @@ func (h *IssueHandler) ListByProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -165,9 +166,9 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *IssueHandler) TransitionStatus(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -198,9 +199,9 @@ func (h *IssueHandler) TransitionStatus(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *IssueHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

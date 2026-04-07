@@ -9,11 +9,12 @@ import (
 )
 
 type ProjectHandler struct {
-	svc *service.ProjectService
+	svc      *service.ProjectService
+	resolver *IDResolver
 }
 
-func NewProjectHandler(svc *service.ProjectService) *ProjectHandler {
-	return &ProjectHandler{svc: svc}
+func NewProjectHandler(svc *service.ProjectService, resolver *IDResolver) *ProjectHandler {
+	return &ProjectHandler{svc: svc, resolver: resolver}
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -33,9 +34,9 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -75,9 +76,9 @@ func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -101,9 +102,9 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProjectHandler) Archive(w http.ResponseWriter, r *http.Request) {
-	id, err := parseUUID(chi.URLParam(r, "id"))
+	id, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

@@ -31,8 +31,10 @@ func newTestIssueHandler() (*IssueHandler, *mocks.MockIssueRepo, *mocks.MockProj
 	historyRepo := &mocks.MockIssueHistoryRepo{}
 	tagRepo := &mocks.MockTagRepo{}
 
-	svc := service.NewIssueService(issueRepo, projectRepo, historyRepo)
-	h := NewIssueHandler(svc, tagRepo)
+	issueSvc := service.NewIssueService(issueRepo, projectRepo, historyRepo)
+	projectSvc := service.NewProjectService(projectRepo)
+	resolver := NewIDResolver(projectSvc, issueSvc)
+	h := NewIssueHandler(issueSvc, tagRepo, resolver)
 	return h, issueRepo, projectRepo, historyRepo, tagRepo
 }
 

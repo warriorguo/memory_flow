@@ -9,11 +9,12 @@ import (
 )
 
 type TagHandler struct {
-	repo repository.TagRepository
+	repo     repository.TagRepository
+	resolver *IDResolver
 }
 
-func NewTagHandler(repo repository.TagRepository) *TagHandler {
-	return &TagHandler{repo: repo}
+func NewTagHandler(repo repository.TagRepository, resolver *IDResolver) *TagHandler {
+	return &TagHandler{repo: repo, resolver: resolver}
 }
 
 func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -52,9 +53,9 @@ func (h *TagHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TagHandler) AddToIssue(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -79,9 +80,9 @@ func (h *TagHandler) AddToIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *TagHandler) RemoveFromIssue(w http.ResponseWriter, r *http.Request) {
-	issueID, err := parseUUID(chi.URLParam(r, "id"))
+	issueID, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

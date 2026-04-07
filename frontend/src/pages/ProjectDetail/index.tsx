@@ -19,7 +19,8 @@ function getTabFromHash(hash: string): TabKey {
 }
 
 const ProjectDetail: React.FC = () => {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectKey } = useParams<{ projectKey: string }>();
+  const projectId = projectKey;
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

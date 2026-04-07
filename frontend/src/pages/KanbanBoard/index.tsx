@@ -220,7 +220,7 @@ const KanbanBoard: React.FC<Props> = ({ projectId: propProjectId }) => {
           {KANBAN_STATUSES.map((status) => (
             <DroppableColumn key={status} status={status} count={columnIssues[status].length}>
               {columnIssues[status].map((issue) => (
-                <DraggableCard key={issue.id} issue={issue} onClick={() => navigate(`/issues/${issue.id}`)} />
+                <DraggableCard key={issue.id} issue={issue} onClick={() => navigate(`/issues/${issue.issue_key}`)} />
               ))}
             </DroppableColumn>
           ))}

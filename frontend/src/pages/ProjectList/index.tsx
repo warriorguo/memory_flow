@@ -45,7 +45,7 @@ const ProjectList: React.FC = () => {
       title: '项目名称',
       dataIndex: 'name',
       render: (name: string, record: any) => (
-        <a onClick={() => navigate(`/projects/${record.id}`)}>{name}</a>
+        <a onClick={() => navigate(`/projects/${record.key}`)}>{name}</a>
       ),
     },
     { title: '负责人', dataIndex: 'owner_id', width: 120 },

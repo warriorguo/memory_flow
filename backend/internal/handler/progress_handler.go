@@ -8,17 +8,18 @@ import (
 )
 
 type ProgressHandler struct {
-	svc *service.ProgressService
+	svc      *service.ProgressService
+	resolver *IDResolver
 }
 
-func NewProgressHandler(svc *service.ProgressService) *ProgressHandler {
-	return &ProgressHandler{svc: svc}
+func NewProgressHandler(svc *service.ProgressService, resolver *IDResolver) *ProgressHandler {
+	return &ProgressHandler{svc: svc, resolver: resolver}
 }
 
 func (h *ProgressHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseUUID(chi.URLParam(r, "projectId"))
+	projectID, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "projectId"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -32,9 +33,9 @@ func (h *ProgressHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProgressHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
-	projectID, err := parseUUID(chi.URLParam(r, "projectId"))
+	projectID, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "projectId"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
 

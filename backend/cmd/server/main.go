@@ -57,13 +57,16 @@ func main() {
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 
+	// Initialize ID resolver (allows UUID or key in URL paths)
+	resolver := handler.NewIDResolver(projectSvc, issueSvc)
+
 	// Initialize handlers
-	projectHandler := handler.NewProjectHandler(projectSvc)
-	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo)
-	progressHandler := handler.NewProgressHandler(progressSvc)
+	projectHandler := handler.NewProjectHandler(projectSvc, resolver)
+	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo, resolver)
+	progressHandler := handler.NewProgressHandler(progressSvc, resolver)
 	memoryHandler := handler.NewMemoryHandler(memorySvc)
-	tagHandler := handler.NewTagHandler(tagRepo)
-	depHandler := handler.NewDependencyHandler(depSvc)
+	tagHandler := handler.NewTagHandler(tagRepo, resolver)
+	depHandler := handler.NewDependencyHandler(depSvc, resolver)
 
 	// Set up router
 	router := handler.NewRouter(

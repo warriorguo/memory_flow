@@ -12,6 +12,7 @@ import (
 type ProjectRepository interface {
 	Create(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Project, error)
+	GetByKey(ctx context.Context, key string) (*model.Project, error)
 	List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error)
 	Update(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	Archive(ctx context.Context, id uuid.UUID) error

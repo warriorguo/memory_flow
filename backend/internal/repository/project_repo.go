@@ -64,6 +64,28 @@ func (r *ProjectRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Project
 	return &p, nil
 }
 
+func (r *ProjectRepo) GetByKey(ctx context.Context, key string) (*model.Project, error) {
+	query := `
+		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at
+		FROM projects WHERE key = $1`
+
+	row := r.pool.QueryRow(ctx, query, key)
+
+	var p model.Project
+	err := row.Scan(
+		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
+		&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
+		&p.CreatedAt, &p.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get project by key: %w", err)
+	}
+	return &p, nil
+}
+
 func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error) {
 	var conditions []string
 	var args []interface{}

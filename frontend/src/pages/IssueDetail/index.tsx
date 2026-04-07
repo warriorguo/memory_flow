@@ -11,7 +11,8 @@ import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
 
 const IssueDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { issueKey } = useParams<{ issueKey: string }>();
+  const id = issueKey;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
