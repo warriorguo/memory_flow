@@ -6,6 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory } from '../../api/issue';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
+import Markdown from '../../components/Markdown';
 import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
@@ -77,7 +78,7 @@ const IssueDetail: React.FC = () => {
           <Descriptions.Item label="PR">{issue.pr_url ? <a href={issue.pr_url} target="_blank" rel="noreferrer">{issue.pr_url}</a> : '-'}</Descriptions.Item>
           <Descriptions.Item label="文档">{issue.doc_url ? <a href={issue.doc_url} target="_blank" rel="noreferrer">{issue.doc_url}</a> : '-'}</Descriptions.Item>
           <Descriptions.Item label="描述" span={2}>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{issue.description || '-'}</div>
+            <Markdown source={issue.description} />
           </Descriptions.Item>
           <Descriptions.Item label="标签" span={2}>
             {issue.tags && issue.tags.length > 0 ? issue.tags.map((t) => <Tag key={t.id} color={t.color}>{t.name}</Tag>) : '-'}

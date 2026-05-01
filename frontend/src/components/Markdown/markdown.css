@@ -1,0 +1,126 @@
+.mf-markdown {
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.88);
+  word-wrap: break-word;
+}
+
+.mf-markdown > *:first-child {
+  margin-top: 0;
+}
+
+.mf-markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.mf-markdown h1,
+.mf-markdown h2,
+.mf-markdown h3,
+.mf-markdown h4,
+.mf-markdown h5,
+.mf-markdown h6 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.mf-markdown h1 { font-size: 20px; }
+.mf-markdown h2 { font-size: 18px; }
+.mf-markdown h3 { font-size: 16px; }
+.mf-markdown h4,
+.mf-markdown h5,
+.mf-markdown h6 { font-size: 14px; }
+
+.mf-markdown p {
+  margin: 8px 0;
+}
+
+.mf-markdown ul,
+.mf-markdown ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.mf-markdown li {
+  margin: 2px 0;
+}
+
+.mf-markdown li > input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+.mf-markdown a {
+  color: #1677ff;
+  text-decoration: none;
+}
+
+.mf-markdown a:hover {
+  text-decoration: underline;
+}
+
+.mf-markdown blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid #d9d9d9;
+  color: rgba(0, 0, 0, 0.65);
+  background: #fafafa;
+}
+
+.mf-markdown code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+  background: rgba(150, 150, 150, 0.15);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.mf-markdown pre {
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: #f6f8fa;
+  border: 1px solid #eaecef;
+  border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.mf-markdown pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  font-size: 12.5px;
+  white-space: pre;
+}
+
+.mf-markdown table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: auto;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.mf-markdown table th,
+.mf-markdown table td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.mf-markdown table th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.mf-markdown hr {
+  border: none;
+  border-top: 1px solid #eaecef;
+  margin: 16px 0;
+}
+
+.mf-markdown img {
+  max-width: 100%;
+  height: auto;
+}
