@@ -4,7 +4,7 @@ BIN ?= memory_flow
 DIST_SRC := frontend/dist
 DIST_EMBED := backend/internal/web/dist
 
-.PHONY: frontend embed-frontend standalone standalone-all test clean
+.PHONY: frontend embed-frontend standalone standalone-all app test clean
 
 # Build the web UI.
 frontend:
@@ -27,6 +27,10 @@ standalone: embed-frontend
 
 # Build frontend then the standalone binary in one step.
 standalone-all: frontend standalone
+
+# Build and install the native macOS app (AppKit + WKWebView) to /Applications.
+app:
+	./macapp/build.sh
 
 test:
 	cd backend && go test ./...
