@@ -28,3 +28,7 @@ Thumbs.db
 
 # Standalone binary (make standalone)
 /memory_flow
+
+# go build ./cmd/standalone output
+backend/standalone
+.claude/scheduled_tasks.lock
