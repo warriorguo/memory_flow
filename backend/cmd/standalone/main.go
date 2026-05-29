@@ -94,6 +94,34 @@ func openDB() (database.DB, error) {
 	return database.WrapSQLite(raw), nil
 }
 
+// endpointFilePath is a fixed, well-known location holding the base URL the
+// running standalone is serving on, so external tools can find it regardless of
+// the (possibly random) port.
+func endpointFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".memory_flow", "endpoint")
+}
+
+func writeEndpointFile(url string) {
+	p := endpointFilePath()
+	if p == "" {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	if err := os.WriteFile(p, []byte(url+"\n"), 0o644); err != nil {
+		log.Printf("warning: could not write endpoint file: %v", err)
+	}
+}
+
+func removeEndpointFile() {
+	if p := endpointFilePath(); p != "" {
+		_ = os.Remove(p)
+	}
+}
+
 func dataPath() (string, error) {
 	if p := os.Getenv("MEMORY_FLOW_DATA"); p != "" {
 		return p, nil
@@ -136,6 +164,12 @@ func runServe() {
 		port = "8080"
 	}
 	addr := "127.0.0.1:" + port
+
+	// Advertise the live endpoint so external tools (e.g. the memory-flow-pm
+	// agent skill) can discover the actual port — important because the native
+	// macOS app launches on a random free port.
+	writeEndpointFile("http://" + addr)
+	defer removeEndpointFile()
 
 	server := &http.Server{
 		Addr:        addr,
