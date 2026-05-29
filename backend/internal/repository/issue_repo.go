@@ -4,24 +4,24 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type IssueRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewIssueRepo(pool *pgxpool.Pool) *IssueRepo {
-	return &IssueRepo{pool: pool}
+func NewIssueRepo(db database.DB) *IssueRepo {
+	return &IssueRepo{db: db}
 }
 
 var issueColumns = `id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at`
 
-func scanIssue(row pgx.Row) (*model.Issue, error) {
+func scanIssue(row database.Row) (*model.Issue, error) {
 	var i model.Issue
 	err := row.Scan(
 		&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
@@ -34,19 +34,19 @@ func scanIssue(row pgx.Row) (*model.Issue, error) {
 	return &i, nil
 }
 
-func (r *IssueRepo) Create(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
+func (r *IssueRepo) Create(ctx context.Context, tx database.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
 	priority := "P2"
 	if req.Priority != nil {
 		priority = *req.Priority
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO issues (issue_key, project_id, type, title, description, priority, assignee_id, creator_id, source, version, git_url, pr_url, doc_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO issues (id, issue_key, project_id, type, title, description, priority, assignee_id, creator_id, source, version, git_url, pr_url, doc_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING %s`, issueColumns)
 
 	row := tx.QueryRow(ctx, query,
-		issueKey, projectID, req.Type, req.Title, req.Description, priority,
+		uuid.New(), issueKey, projectID, req.Type, req.Title, req.Description, priority,
 		req.AssigneeID, req.CreatorID, req.Source, req.Version,
 		req.GitURL, req.PRURL, req.DocURL,
 	)
@@ -60,10 +60,10 @@ func (r *IssueRepo) Create(ctx context.Context, tx pgx.Tx, issueKey string, proj
 
 func (r *IssueRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
 	query := fmt.Sprintf(`SELECT %s FROM issues WHERE id = $1`, issueColumns)
-	row := r.pool.QueryRow(ctx, query, id)
+	row := r.db.QueryRow(ctx, query, id)
 	issue, err := scanIssue(row)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get issue by id: %w", err)
@@ -73,10 +73,10 @@ func (r *IssueRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, er
 
 func (r *IssueRepo) GetByKey(ctx context.Context, key string) (*model.Issue, error) {
 	query := fmt.Sprintf(`SELECT %s FROM issues WHERE issue_key = $1`, issueColumns)
-	row := r.pool.QueryRow(ctx, query, key)
+	row := r.db.QueryRow(ctx, query, key)
 	issue, err := scanIssue(row)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get issue by key: %w", err)
@@ -145,7 +145,7 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 		LIMIT $%d OFFSET $%d`, issueColumns, where, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list issues: %w", err)
 	}
@@ -173,7 +173,7 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 	return issues, total, nil
 }
 
-func (r *IssueRepo) Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+func (r *IssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 	setClauses = append(setClauses, "updated_at = now()")
 	argIdx := len(args) + 1
 	args = append(args, id)
@@ -186,7 +186,7 @@ func (r *IssueRepo) Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClau
 	row := tx.QueryRow(ctx, query, args...)
 	issue, err := scanIssue(row)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("update issue: %w", err)
@@ -196,7 +196,7 @@ func (r *IssueRepo) Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClau
 
 func (r *IssueRepo) CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error) {
 	query := `SELECT status, COUNT(*) as count FROM issues WHERE project_id = $1 GROUP BY status ORDER BY status`
-	rows, err := r.pool.Query(ctx, query, projectID)
+	rows, err := r.db.Query(ctx, query, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("count by status: %w", err)
 	}
@@ -216,7 +216,7 @@ func (r *IssueRepo) CountByStatus(ctx context.Context, projectID uuid.UUID) (map
 
 func (r *IssueRepo) CountByPriority(ctx context.Context, projectID uuid.UUID) (map[string]int, error) {
 	query := `SELECT priority, COUNT(*) as count FROM issues WHERE project_id = $1 GROUP BY priority ORDER BY priority`
-	rows, err := r.pool.Query(ctx, query, projectID)
+	rows, err := r.db.Query(ctx, query, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("count by priority: %w", err)
 	}
@@ -236,7 +236,7 @@ func (r *IssueRepo) CountByPriority(ctx context.Context, projectID uuid.UUID) (m
 
 func (r *IssueRepo) CountByType(ctx context.Context, projectID uuid.UUID) (map[string]int, error) {
 	query := `SELECT type, COUNT(*) as count FROM issues WHERE project_id = $1 GROUP BY type ORDER BY type`
-	rows, err := r.pool.Query(ctx, query, projectID)
+	rows, err := r.db.Query(ctx, query, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("count by type: %w", err)
 	}
@@ -254,95 +254,69 @@ func (r *IssueRepo) CountByType(ctx context.Context, projectID uuid.UUID) (map[s
 	return counts, rows.Err()
 }
 
+// GetTrend returns per-day created/done counts over the last `days` days.
+// Bucketing is done in Go (using UTC dates) so the query is portable across
+// PostgreSQL and SQLite — avoiding generate_series/::interval/|| casts.
 func (r *IssueRepo) GetTrend(ctx context.Context, projectID uuid.UUID, days int) ([]model.TrendPoint, error) {
-	// Query created issues per day
-	createdQuery := `
-		SELECT DATE(created_at)::text AS date, COUNT(*) AS count
-		FROM issues
-		WHERE project_id = $1 AND created_at >= now() - interval '1 day' * $2
-		GROUP BY DATE(created_at)`
+	const layout = "2006-01-02"
+	from := time.Now().UTC().AddDate(0, 0, -days)
 
-	createdRows, err := r.pool.Query(ctx, createdQuery, projectID, days)
+	// Created issues: bucket created_at by day.
+	createdMap, err := r.bucketByDay(ctx, layout,
+		`SELECT created_at FROM issues WHERE project_id = $1 AND created_at >= $2`,
+		projectID, from)
 	if err != nil {
 		return nil, fmt.Errorf("get trend created: %w", err)
 	}
-	defer createdRows.Close()
 
-	createdMap := make(map[string]int)
-	for createdRows.Next() {
-		var date string
-		var count int
-		if err := createdRows.Scan(&date, &count); err != nil {
-			return nil, fmt.Errorf("scan created trend: %w", err)
-		}
-		createdMap[date] = count
-	}
-	if err := createdRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate created trend: %w", err)
-	}
-
-	// Query done issues per day (from issue_history)
-	doneQuery := `
-		SELECT DATE(ih.created_at)::text AS date, COUNT(*) AS count
-		FROM issue_history ih
-		JOIN issues i ON i.id = ih.issue_id
-		WHERE i.project_id = $1
-		  AND ih.field_name = 'status'
-		  AND ih.new_value = 'done'
-		  AND ih.created_at >= now() - interval '1 day' * $2
-		GROUP BY DATE(ih.created_at)`
-
-	doneRows, err := r.pool.Query(ctx, doneQuery, projectID, days)
+	// Done transitions: bucket issue_history rows where status -> 'done'.
+	doneMap, err := r.bucketByDay(ctx, layout,
+		`SELECT ih.created_at
+		 FROM issue_history ih
+		 JOIN issues i ON i.id = ih.issue_id
+		 WHERE i.project_id = $1
+		   AND ih.field_name = 'status'
+		   AND ih.new_value = 'done'
+		   AND ih.created_at >= $2`,
+		projectID, from)
 	if err != nil {
 		return nil, fmt.Errorf("get trend done: %w", err)
 	}
-	defer doneRows.Close()
 
-	doneMap := make(map[string]int)
-	for doneRows.Next() {
-		var date string
-		var count int
-		if err := doneRows.Scan(&date, &count); err != nil {
-			return nil, fmt.Errorf("scan done trend: %w", err)
-		}
-		doneMap[date] = count
-	}
-	if err := doneRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate done trend: %w", err)
-	}
-
-	// Merge into TrendPoint structs using generate_series for all days
-	seriesQuery := `
-		SELECT d::date::text AS date
-		FROM generate_series(now() - ($1 || ' days')::interval, now(), '1 day') AS d
-		ORDER BY d::date`
-
-	seriesRows, err := r.pool.Query(ctx, seriesQuery, fmt.Sprintf("%d", days))
-	if err != nil {
-		return nil, fmt.Errorf("get trend series: %w", err)
-	}
-	defer seriesRows.Close()
-
+	// Build the inclusive day series [from .. today] in Go.
 	var points []model.TrendPoint
-	for seriesRows.Next() {
-		var date string
-		if err := seriesRows.Scan(&date); err != nil {
-			return nil, fmt.Errorf("scan trend date: %w", err)
-		}
+	end := time.Now().UTC()
+	for d := from; !d.After(end); d = d.AddDate(0, 0, 1) {
+		key := d.Format(layout)
 		points = append(points, model.TrendPoint{
-			Date:    date,
-			Created: createdMap[date],
-			Done:    doneMap[date],
+			Date:    key,
+			Created: createdMap[key],
+			Done:    doneMap[key],
 		})
 	}
-	return points, seriesRows.Err()
+	return points, nil
 }
 
-func (r *IssueRepo) BeginTx(ctx context.Context) (pgx.Tx, error) {
-	return r.pool.Begin(ctx)
+// bucketByDay runs a query returning a single timestamp column and tallies the
+// rows by UTC day (formatted with layout).
+func (r *IssueRepo) bucketByDay(ctx context.Context, layout, query string, args ...any) (map[string]int, error) {
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var ts time.Time
+		if err := rows.Scan(&ts); err != nil {
+			return nil, err
+		}
+		counts[ts.UTC().Format(layout)]++
+	}
+	return counts, rows.Err()
 }
 
-// Pool returns the underlying connection pool for use in transactions.
-func (r *IssueRepo) Pool() *pgxpool.Pool {
-	return r.pool
+func (r *IssueRepo) BeginTx(ctx context.Context) (database.Tx, error) {
+	return r.db.Begin(ctx)
 }

@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 	"github.com/warriorguo/memory_flow/backend/internal/repository/mocks"
 )
 
-func newMockTx() pgx.Tx {
+func newMockTx() database.Tx {
 	return &mocks.MockTx{
 		CommitFn:   func(ctx context.Context) error { return nil },
 		RollbackFn: func(ctx context.Context) error { return nil },
@@ -29,16 +29,16 @@ func TestCreateIssue_Success(t *testing.T) {
 	mockTx := newMockTx()
 
 	projectRepo := &mocks.MockProjectRepo{
-		IncrementIssueNumberFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error) {
+		IncrementIssueNumberFn: func(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error) {
 			return 1, "PROJ", nil
 		},
 	}
 
 	issueRepo := &mocks.MockIssueRepo{
-		BeginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+		BeginTxFn: func(ctx context.Context) (database.Tx, error) {
 			return mockTx, nil
 		},
-		CreateFn: func(ctx context.Context, tx pgx.Tx, issueKey string, pid uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
+		CreateFn: func(ctx context.Context, tx database.Tx, issueKey string, pid uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
 			if issueKey != "PROJ-1" {
 				t.Errorf("expected issue key PROJ-1, got %s", issueKey)
 			}
@@ -141,10 +141,10 @@ func TestUpdateIssue_Success(t *testing.T) {
 		GetByIDFn: func(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
 			return existingIssue, nil
 		},
-		BeginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+		BeginTxFn: func(ctx context.Context) (database.Tx, error) {
 			return mockTx, nil
 		},
-		UpdateFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+		UpdateFn: func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 			updated := *existingIssue
 			updated.Title = newTitle
 			return &updated, nil
@@ -153,7 +153,7 @@ func TestUpdateIssue_Success(t *testing.T) {
 
 	var historyCreated bool
 	historyRepo := &mocks.MockIssueHistoryRepo{
-		CreateFn: func(ctx context.Context, tx pgx.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+		CreateFn: func(ctx context.Context, tx database.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 			historyCreated = true
 			if fieldName != "title" {
 				t.Errorf("expected field_name title, got %s", fieldName)
@@ -211,16 +211,16 @@ func TestUpdateIssue_TracksAllFieldChanges(t *testing.T) {
 		GetByIDFn: func(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
 			return existingIssue, nil
 		},
-		BeginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+		BeginTxFn: func(ctx context.Context) (database.Tx, error) {
 			return mockTx, nil
 		},
-		UpdateFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+		UpdateFn: func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 			return existingIssue, nil
 		},
 	}
 
 	historyRepo := &mocks.MockIssueHistoryRepo{
-		CreateFn: func(ctx context.Context, tx pgx.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+		CreateFn: func(ctx context.Context, tx database.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 			trackedFields[fieldName] = true
 			return nil
 		},
@@ -272,10 +272,10 @@ func TestTransitionStatus_ValidTransition(t *testing.T) {
 				UpdatedAt: time.Now(),
 			}, nil
 		},
-		BeginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+		BeginTxFn: func(ctx context.Context) (database.Tx, error) {
 			return mockTx, nil
 		},
-		UpdateFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+		UpdateFn: func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 			return &model.Issue{
 				ID:        issueID,
 				IssueKey:  "PROJ-1",
@@ -291,7 +291,7 @@ func TestTransitionStatus_ValidTransition(t *testing.T) {
 	}
 
 	historyRepo := &mocks.MockIssueHistoryRepo{
-		CreateFn: func(ctx context.Context, tx pgx.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+		CreateFn: func(ctx context.Context, tx database.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 			return nil
 		},
 	}
@@ -394,10 +394,10 @@ func TestTransitionStatus_AllValidPaths(t *testing.T) {
 						UpdatedAt: time.Now(),
 					}, nil
 				},
-				BeginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+				BeginTxFn: func(ctx context.Context) (database.Tx, error) {
 					return mockTx, nil
 				},
-				UpdateFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+				UpdateFn: func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 					return &model.Issue{
 						ID:        issueID,
 						Status:    tc.to,
@@ -408,7 +408,7 @@ func TestTransitionStatus_AllValidPaths(t *testing.T) {
 			}
 
 			historyRepo := &mocks.MockIssueHistoryRepo{
-				CreateFn: func(ctx context.Context, tx pgx.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+				CreateFn: func(ctx context.Context, tx database.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 					return nil
 				},
 			}

@@ -6,27 +6,26 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type ProjectRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewProjectRepo(pool *pgxpool.Pool) *ProjectRepo {
-	return &ProjectRepo{pool: pool}
+func NewProjectRepo(db database.DB) *ProjectRepo {
+	return &ProjectRepo{db: db}
 }
 
 func (r *ProjectRepo) Create(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error) {
 	query := `
-		INSERT INTO projects (key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO projects (id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at`
 
-	row := r.pool.QueryRow(ctx, query,
-		req.Key, req.Name, req.Summary, req.Description, req.DesignPrinciples,
+	row := r.db.QueryRow(ctx, query,
+		uuid.New(), req.Key, req.Name, req.Summary, req.Description, req.DesignPrinciples,
 		req.GitURL, req.CICDURL, req.DocURL, req.OwnerID,
 	)
 
@@ -47,7 +46,7 @@ func (r *ProjectRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Project
 		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at
 		FROM projects WHERE id = $1`
 
-	row := r.pool.QueryRow(ctx, query, id)
+	row := r.db.QueryRow(ctx, query, id)
 
 	var p model.Project
 	err := row.Scan(
@@ -56,7 +55,7 @@ func (r *ProjectRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Project
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get project by id: %w", err)
@@ -69,7 +68,7 @@ func (r *ProjectRepo) GetByKey(ctx context.Context, key string) (*model.Project,
 		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at
 		FROM projects WHERE key = $1`
 
-	row := r.pool.QueryRow(ctx, query, key)
+	row := r.db.QueryRow(ctx, query, key)
 
 	var p model.Project
 	err := row.Scan(
@@ -78,7 +77,7 @@ func (r *ProjectRepo) GetByKey(ctx context.Context, key string) (*model.Project,
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get project by key: %w", err)
@@ -123,7 +122,7 @@ func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]m
 		LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list projects: %w", err)
 	}
@@ -213,7 +212,7 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 		RETURNING id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at`,
 		strings.Join(setClauses, ", "), argIdx)
 
-	row := r.pool.QueryRow(ctx, query, args...)
+	row := r.db.QueryRow(ctx, query, args...)
 	var p model.Project
 	err := row.Scan(
 		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
@@ -221,7 +220,7 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 		&p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("update project: %w", err)
@@ -231,7 +230,7 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 
 func (r *ProjectRepo) Archive(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE projects SET status = 'archived', updated_at = now() WHERE id = $1`
-	ct, err := r.pool.Exec(ctx, query, id)
+	ct, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("archive project: %w", err)
 	}
@@ -241,7 +240,7 @@ func (r *ProjectRepo) Archive(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *ProjectRepo) IncrementIssueNumber(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error) {
+func (r *ProjectRepo) IncrementIssueNumber(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error) {
 	query := `UPDATE projects SET next_issue_number = next_issue_number + 1, updated_at = now() WHERE id = $1 RETURNING next_issue_number, key`
 	row := tx.QueryRow(ctx, query, id)
 	var num int

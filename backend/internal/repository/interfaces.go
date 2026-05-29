@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
@@ -16,26 +16,26 @@ type ProjectRepository interface {
 	List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error)
 	Update(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	Archive(ctx context.Context, id uuid.UUID) error
-	IncrementIssueNumber(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error)
+	IncrementIssueNumber(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error)
 }
 
 // IssueRepository defines the interface for issue data access.
 type IssueRepository interface {
-	Create(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
+	Create(ctx context.Context, tx database.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error)
 	GetByKey(ctx context.Context, key string) (*model.Issue, error)
 	List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
-	Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
+	Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByPriority(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByType(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	GetTrend(ctx context.Context, projectID uuid.UUID, days int) ([]model.TrendPoint, error)
-	BeginTx(ctx context.Context) (pgx.Tx, error)
+	BeginTx(ctx context.Context) (database.Tx, error)
 }
 
 // IssueHistoryRepository defines the interface for issue history data access.
 type IssueHistoryRepository interface {
-	Create(ctx context.Context, tx pgx.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error
+	Create(ctx context.Context, tx database.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error
 	ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueHistory, error)
 }
 

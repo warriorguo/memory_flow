@@ -12,6 +12,7 @@ func NewRouter(
 	memoryHandler *MemoryHandler,
 	tagHandler *TagHandler,
 	dependencyHandler *DependencyHandler,
+	syncHandler *SyncHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -66,6 +67,10 @@ func NewRouter(
 		// Memory tags
 		r.Post("/memories/{id}/tags", tagHandler.AddToMemory)
 		r.Delete("/memories/{id}/tags/{tagId}", tagHandler.RemoveFromMemory)
+
+		// Data sync (export full dataset / merge an incoming snapshot)
+		r.Get("/sync/export", syncHandler.Export)
+		r.Post("/sync/import", syncHandler.Import)
 	})
 
 	return r

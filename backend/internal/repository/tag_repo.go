@@ -5,26 +5,25 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type TagRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewTagRepo(pool *pgxpool.Pool) *TagRepo {
-	return &TagRepo{pool: pool}
+func NewTagRepo(db database.DB) *TagRepo {
+	return &TagRepo{db: db}
 }
 
 func (r *TagRepo) Create(ctx context.Context, req model.CreateTagRequest) (*model.Tag, error) {
 	query := `
-		INSERT INTO tags (name, color)
-		VALUES ($1, $2)
+		INSERT INTO tags (id, name, color)
+		VALUES ($1, $2, $3)
 		RETURNING id, name, color, created_at`
 
-	row := r.pool.QueryRow(ctx, query, req.Name, req.Color)
+	row := r.db.QueryRow(ctx, query, uuid.New(), req.Name, req.Color)
 
 	var t model.Tag
 	err := row.Scan(&t.ID, &t.Name, &t.Color, &t.CreatedAt)
@@ -36,12 +35,12 @@ func (r *TagRepo) Create(ctx context.Context, req model.CreateTagRequest) (*mode
 
 func (r *TagRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Tag, error) {
 	query := `SELECT id, name, color, created_at FROM tags WHERE id = $1`
-	row := r.pool.QueryRow(ctx, query, id)
+	row := r.db.QueryRow(ctx, query, id)
 
 	var t model.Tag
 	err := row.Scan(&t.ID, &t.Name, &t.Color, &t.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get tag by id: %w", err)
@@ -51,7 +50,7 @@ func (r *TagRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Tag, error)
 
 func (r *TagRepo) List(ctx context.Context) ([]model.Tag, error) {
 	query := `SELECT id, name, color, created_at FROM tags ORDER BY name`
-	rows, err := r.pool.Query(ctx, query)
+	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list tags: %w", err)
 	}
@@ -70,7 +69,7 @@ func (r *TagRepo) List(ctx context.Context) ([]model.Tag, error) {
 
 func (r *TagRepo) AddToIssue(ctx context.Context, issueID, tagID uuid.UUID) error {
 	query := `INSERT INTO issue_tag_rel (issue_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
-	_, err := r.pool.Exec(ctx, query, issueID, tagID)
+	_, err := r.db.Exec(ctx, query, issueID, tagID)
 	if err != nil {
 		return fmt.Errorf("add tag to issue: %w", err)
 	}
@@ -79,7 +78,7 @@ func (r *TagRepo) AddToIssue(ctx context.Context, issueID, tagID uuid.UUID) erro
 
 func (r *TagRepo) RemoveFromIssue(ctx context.Context, issueID, tagID uuid.UUID) error {
 	query := `DELETE FROM issue_tag_rel WHERE issue_id = $1 AND tag_id = $2`
-	ct, err := r.pool.Exec(ctx, query, issueID, tagID)
+	ct, err := r.db.Exec(ctx, query, issueID, tagID)
 	if err != nil {
 		return fmt.Errorf("remove tag from issue: %w", err)
 	}
@@ -97,7 +96,7 @@ func (r *TagRepo) GetByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.
 		WHERE itr.issue_id = $1
 		ORDER BY t.name`
 
-	rows, err := r.pool.Query(ctx, query, issueID)
+	rows, err := r.db.Query(ctx, query, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("get tags by issue id: %w", err)
 	}
@@ -116,7 +115,7 @@ func (r *TagRepo) GetByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.
 
 func (r *TagRepo) AddToMemory(ctx context.Context, memoryID, tagID uuid.UUID) error {
 	query := `INSERT INTO memory_tag_rel (memory_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
-	_, err := r.pool.Exec(ctx, query, memoryID, tagID)
+	_, err := r.db.Exec(ctx, query, memoryID, tagID)
 	if err != nil {
 		return fmt.Errorf("add tag to memory: %w", err)
 	}
@@ -125,7 +124,7 @@ func (r *TagRepo) AddToMemory(ctx context.Context, memoryID, tagID uuid.UUID) er
 
 func (r *TagRepo) RemoveFromMemory(ctx context.Context, memoryID, tagID uuid.UUID) error {
 	query := `DELETE FROM memory_tag_rel WHERE memory_id = $1 AND tag_id = $2`
-	ct, err := r.pool.Exec(ctx, query, memoryID, tagID)
+	ct, err := r.db.Exec(ctx, query, memoryID, tagID)
 	if err != nil {
 		return fmt.Errorf("remove tag from memory: %w", err)
 	}
@@ -143,7 +142,7 @@ func (r *TagRepo) GetByMemoryID(ctx context.Context, memoryID uuid.UUID) ([]mode
 		WHERE mtr.memory_id = $1
 		ORDER BY t.name`
 
-	rows, err := r.pool.Query(ctx, query, memoryID)
+	rows, err := r.db.Query(ctx, query, memoryID)
 	if err != nil {
 		return nil, fmt.Errorf("get tags by memory id: %w", err)
 	}

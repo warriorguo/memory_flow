@@ -36,6 +36,9 @@ func main() {
 	}
 	defer pool.Close()
 
+	// Adapt the pgx pool to the shared DB abstraction used by the repositories.
+	db := database.WrapPgx(pool)
+
 	// Run migrations
 	if err := runMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
@@ -43,12 +46,12 @@ func main() {
 	log.Println("migrations completed successfully")
 
 	// Initialize repositories
-	projectRepo := repository.NewProjectRepo(pool)
-	issueRepo := repository.NewIssueRepo(pool)
-	issueHistoryRepo := repository.NewIssueHistoryRepo(pool)
-	memoryRepo := repository.NewMemoryRepo(pool)
-	tagRepo := repository.NewTagRepo(pool)
-	depRepo := repository.NewDependencyRepo(pool)
+	projectRepo := repository.NewProjectRepo(db)
+	issueRepo := repository.NewIssueRepo(db)
+	issueHistoryRepo := repository.NewIssueHistoryRepo(db)
+	memoryRepo := repository.NewMemoryRepo(db)
+	tagRepo := repository.NewTagRepo(db)
+	depRepo := repository.NewDependencyRepo(db)
 
 	// Initialize services
 	projectSvc := service.NewProjectService(projectRepo)
@@ -67,6 +70,7 @@ func main() {
 	memoryHandler := handler.NewMemoryHandler(memorySvc)
 	tagHandler := handler.NewTagHandler(tagRepo, resolver)
 	depHandler := handler.NewDependencyHandler(depSvc, resolver)
+	syncHandler := handler.NewSyncHandler(db, cfg.SyncToken)
 
 	// Set up router
 	router := handler.NewRouter(
@@ -76,6 +80,7 @@ func main() {
 		memoryHandler,
 		tagHandler,
 		depHandler,
+		syncHandler,
 	)
 
 	// Start server

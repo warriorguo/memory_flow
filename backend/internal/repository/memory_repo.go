@@ -6,17 +6,16 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type MemoryRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewMemoryRepo(pool *pgxpool.Pool) *MemoryRepo {
-	return &MemoryRepo{pool: pool}
+func NewMemoryRepo(db database.DB) *MemoryRepo {
+	return &MemoryRepo{db: db}
 }
 
 // memorySelectCols selects memory columns plus project id/key/name via LEFT JOIN.
@@ -27,7 +26,7 @@ const memorySelectCols = `
 	p.id, p.key, p.name`
 
 // scanMemoryResponse scans a row that contains memory columns followed by optional project columns.
-func scanMemoryResponse(row pgx.Row) (*model.MemoryResponse, error) {
+func scanMemoryResponse(row database.Row) (*model.MemoryResponse, error) {
 	var mr model.MemoryResponse
 	var projID *uuid.UUID
 	var projKey *string
@@ -55,13 +54,13 @@ func scanMemoryResponse(row pgx.Row) (*model.MemoryResponse, error) {
 func (r *MemoryRepo) Create(ctx context.Context, req model.CreateMemoryRequest) (*model.MemoryResponse, error) {
 	// Insert first, then fetch with JOIN so project info is included.
 	insertQuery := `
-		INSERT INTO memories (project_id, type, title, content, source_object_type, source_object_id, creator_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO memories (id, project_id, type, title, content, source_object_type, source_object_id, creator_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`
 
 	var newID uuid.UUID
-	err := r.pool.QueryRow(ctx, insertQuery,
-		req.ProjectID, req.Type, req.Title, req.Content,
+	err := r.db.QueryRow(ctx, insertQuery,
+		uuid.New(), req.ProjectID, req.Type, req.Title, req.Content,
 		req.SourceObjectType, req.SourceObjectID, req.CreatorID,
 	).Scan(&newID)
 	if err != nil {
@@ -77,10 +76,10 @@ func (r *MemoryRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.MemoryRe
 		LEFT JOIN projects p ON p.id = m.project_id
 		WHERE m.id = $1`, memorySelectCols)
 
-	row := r.pool.QueryRow(ctx, query, id)
+	row := r.db.QueryRow(ctx, query, id)
 	mr, err := scanMemoryResponse(row)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get memory by id: %w", err)
@@ -136,7 +135,7 @@ func (r *MemoryRepo) List(ctx context.Context, filter model.MemoryFilter) ([]mod
 		LIMIT $%d OFFSET $%d`, memorySelectCols, where, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list memories: %w", err)
 	}
@@ -204,7 +203,7 @@ func (r *MemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateM
 		UPDATE memories SET %s WHERE id = $%d`,
 		strings.Join(setClauses, ", "), argIdx)
 
-	ct, err := r.pool.Exec(ctx, updateQuery, args...)
+	ct, err := r.db.Exec(ctx, updateQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("update memory: %w", err)
 	}
@@ -216,7 +215,7 @@ func (r *MemoryRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateM
 
 func (r *MemoryRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM memories WHERE id = $1`
-	ct, err := r.pool.Exec(ctx, query, id)
+	ct, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("delete memory: %w", err)
 	}

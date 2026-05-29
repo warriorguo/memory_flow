@@ -2,6 +2,11 @@
 backend/bin/
 backend/tmp/
 
+# Embedded frontend build artifact (copied from frontend/dist at build time).
+# The directory + .gitkeep stay so the standalone package always compiles.
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
@@ -20,3 +25,6 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Standalone binary (make standalone)
+/memory_flow

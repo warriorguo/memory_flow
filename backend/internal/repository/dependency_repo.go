@@ -5,22 +5,21 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type DependencyRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewDependencyRepo(pool *pgxpool.Pool) *DependencyRepo {
-	return &DependencyRepo{pool: pool}
+func NewDependencyRepo(db database.DB) *DependencyRepo {
+	return &DependencyRepo{db: db}
 }
 
 var depColumns = `id, source_issue_id, target_issue_id, type, severity, created_at`
 
-func scanDep(row pgx.Row) (*model.IssueDependency, error) {
+func scanDep(row database.Row) (*model.IssueDependency, error) {
 	var d model.IssueDependency
 	err := row.Scan(&d.ID, &d.SourceIssueID, &d.TargetIssueID, &d.Type, &d.Severity, &d.CreatedAt)
 	if err != nil {
@@ -31,11 +30,11 @@ func scanDep(row pgx.Row) (*model.IssueDependency, error) {
 
 func (r *DependencyRepo) Create(ctx context.Context, dep model.IssueDependency) (*model.IssueDependency, error) {
 	query := fmt.Sprintf(`
-		INSERT INTO issue_dependencies (source_issue_id, target_issue_id, type, severity)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO issue_dependencies (id, source_issue_id, target_issue_id, type, severity)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING %s`, depColumns)
 
-	row := r.pool.QueryRow(ctx, query, dep.SourceIssueID, dep.TargetIssueID, dep.Type, dep.Severity)
+	row := r.db.QueryRow(ctx, query, uuid.New(), dep.SourceIssueID, dep.TargetIssueID, dep.Type, dep.Severity)
 	result, err := scanDep(row)
 	if err != nil {
 		return nil, fmt.Errorf("create dependency: %w", err)
@@ -44,7 +43,7 @@ func (r *DependencyRepo) Create(ctx context.Context, dep model.IssueDependency) 
 }
 
 func (r *DependencyRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM issue_dependencies WHERE id = $1`, id)
+	tag, err := r.db.Exec(ctx, `DELETE FROM issue_dependencies WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("delete dependency: %w", err)
 	}
@@ -56,7 +55,7 @@ func (r *DependencyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 
 func (r *DependencyRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error) {
 	query := fmt.Sprintf(`SELECT %s FROM issue_dependencies WHERE source_issue_id = $1 OR target_issue_id = $1 ORDER BY created_at`, depColumns)
-	rows, err := r.pool.Query(ctx, query, issueID)
+	rows, err := r.db.Query(ctx, query, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("list dependencies: %w", err)
 	}
@@ -84,7 +83,7 @@ func (r *DependencyRepo) GetBlocks(ctx context.Context, issueID uuid.UUID) ([]mo
 }
 
 func (r *DependencyRepo) queryDeps(ctx context.Context, query string, issueID uuid.UUID) ([]model.IssueDependency, error) {
-	rows, err := r.pool.Query(ctx, query, issueID)
+	rows, err := r.db.Query(ctx, query, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("query dependencies: %w", err)
 	}
@@ -120,7 +119,7 @@ func (r *DependencyRepo) HasPath(ctx context.Context, sourceID, targetID uuid.UU
 		SELECT EXISTS (SELECT 1 FROM dep_chain WHERE target_issue_id = $2)`
 
 	var exists bool
-	err := r.pool.QueryRow(ctx, query, sourceID, targetID).Scan(&exists)
+	err := r.db.QueryRow(ctx, query, sourceID, targetID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("check dependency path: %w", err)
 	}

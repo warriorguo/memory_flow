@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
@@ -16,7 +16,7 @@ type MockProjectRepo struct {
 	ListFn                 func(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error)
 	UpdateFn               func(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	ArchiveFn              func(ctx context.Context, id uuid.UUID) error
-	IncrementIssueNumberFn func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error)
+	IncrementIssueNumberFn func(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error)
 }
 
 func (m *MockProjectRepo) Create(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error) {
@@ -40,25 +40,25 @@ func (m *MockProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Up
 func (m *MockProjectRepo) Archive(ctx context.Context, id uuid.UUID) error {
 	return m.ArchiveFn(ctx, id)
 }
-func (m *MockProjectRepo) IncrementIssueNumber(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error) {
+func (m *MockProjectRepo) IncrementIssueNumber(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error) {
 	return m.IncrementIssueNumberFn(ctx, tx, id)
 }
 
 // MockIssueRepo is a mock implementation of repository.IssueRepository.
 type MockIssueRepo struct {
-	CreateFn          func(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
+	CreateFn          func(ctx context.Context, tx database.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error)
 	GetByIDFn         func(ctx context.Context, id uuid.UUID) (*model.Issue, error)
 	GetByKeyFn        func(ctx context.Context, key string) (*model.Issue, error)
 	ListFn            func(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
-	UpdateFn          func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
+	UpdateFn          func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatusFn   func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByPriorityFn func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByTypeFn     func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	GetTrendFn        func(ctx context.Context, projectID uuid.UUID, days int) ([]model.TrendPoint, error)
-	BeginTxFn         func(ctx context.Context) (pgx.Tx, error)
+	BeginTxFn         func(ctx context.Context) (database.Tx, error)
 }
 
-func (m *MockIssueRepo) Create(ctx context.Context, tx pgx.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
+func (m *MockIssueRepo) Create(ctx context.Context, tx database.Tx, issueKey string, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
 	return m.CreateFn(ctx, tx, issueKey, projectID, req)
 }
 func (m *MockIssueRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
@@ -70,7 +70,7 @@ func (m *MockIssueRepo) GetByKey(ctx context.Context, key string) (*model.Issue,
 func (m *MockIssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error) {
 	return m.ListFn(ctx, filter)
 }
-func (m *MockIssueRepo) Update(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+func (m *MockIssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 	return m.UpdateFn(ctx, tx, id, setClauses, args)
 }
 func (m *MockIssueRepo) CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error) {
@@ -85,17 +85,17 @@ func (m *MockIssueRepo) CountByType(ctx context.Context, projectID uuid.UUID) (m
 func (m *MockIssueRepo) GetTrend(ctx context.Context, projectID uuid.UUID, days int) ([]model.TrendPoint, error) {
 	return m.GetTrendFn(ctx, projectID, days)
 }
-func (m *MockIssueRepo) BeginTx(ctx context.Context) (pgx.Tx, error) {
+func (m *MockIssueRepo) BeginTx(ctx context.Context) (database.Tx, error) {
 	return m.BeginTxFn(ctx)
 }
 
 // MockIssueHistoryRepo is a mock implementation of repository.IssueHistoryRepository.
 type MockIssueHistoryRepo struct {
-	CreateFn        func(ctx context.Context, tx pgx.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error
+	CreateFn        func(ctx context.Context, tx database.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error
 	ListByIssueIDFn func(ctx context.Context, issueID uuid.UUID) ([]model.IssueHistory, error)
 }
 
-func (m *MockIssueHistoryRepo) Create(ctx context.Context, tx pgx.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+func (m *MockIssueHistoryRepo) Create(ctx context.Context, tx database.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 	return m.CreateFn(ctx, tx, issueID, fieldName, oldValue, newValue, operatorID)
 }
 func (m *MockIssueHistoryRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueHistory, error) {
@@ -214,9 +214,9 @@ func (m *MockUserRepo) GetByUsername(ctx context.Context, username string) (*mod
 	return m.GetByUsernameFn(ctx, username)
 }
 
-// MockTx is a minimal mock for pgx.Tx used in tests.
+// MockTx is a minimal mock for database.Tx used in tests.
 type MockTx struct {
-	pgx.Tx
+	database.Tx
 	CommitFn   func(ctx context.Context) error
 	RollbackFn func(ctx context.Context) error
 }

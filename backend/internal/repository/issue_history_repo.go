@@ -5,25 +5,24 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
 type IssueHistoryRepo struct {
-	pool *pgxpool.Pool
+	db database.DB
 }
 
-func NewIssueHistoryRepo(pool *pgxpool.Pool) *IssueHistoryRepo {
-	return &IssueHistoryRepo{pool: pool}
+func NewIssueHistoryRepo(db database.DB) *IssueHistoryRepo {
+	return &IssueHistoryRepo{db: db}
 }
 
-func (r *IssueHistoryRepo) Create(ctx context.Context, tx pgx.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+func (r *IssueHistoryRepo) Create(ctx context.Context, tx database.Tx, issueID uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 	query := `
-		INSERT INTO issue_history (issue_id, field_name, old_value, new_value, operator_id)
-		VALUES ($1, $2, $3, $4, $5)`
+		INSERT INTO issue_history (id, issue_id, field_name, old_value, new_value, operator_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err := tx.Exec(ctx, query, issueID, fieldName, oldValue, newValue, operatorID)
+	_, err := tx.Exec(ctx, query, uuid.New(), issueID, fieldName, oldValue, newValue, operatorID)
 	if err != nil {
 		return fmt.Errorf("create issue history: %w", err)
 	}
@@ -37,7 +36,7 @@ func (r *IssueHistoryRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID)
 		WHERE issue_id = $1
 		ORDER BY created_at DESC`
 
-	rows, err := r.pool.Query(ctx, query, issueID)
+	rows, err := r.db.Query(ctx, query, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("list issue history: %w", err)
 	}

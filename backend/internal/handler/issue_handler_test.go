@@ -12,13 +12,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 	"github.com/warriorguo/memory_flow/backend/internal/repository/mocks"
 	"github.com/warriorguo/memory_flow/backend/internal/service"
 )
 
-func newMockTxForHandler() pgx.Tx {
+func newMockTxForHandler() database.Tx {
 	return &mocks.MockTx{
 		CommitFn:   func(ctx context.Context) error { return nil },
 		RollbackFn: func(ctx context.Context) error { return nil },
@@ -43,13 +43,13 @@ func TestCreateIssue_Handler_Success(t *testing.T) {
 	projectID := uuid.New()
 	mockTx := newMockTxForHandler()
 
-	projectRepo.IncrementIssueNumberFn = func(ctx context.Context, tx pgx.Tx, id uuid.UUID) (int, string, error) {
+	projectRepo.IncrementIssueNumberFn = func(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error) {
 		return 1, "PROJ", nil
 	}
-	issueRepo.BeginTxFn = func(ctx context.Context) (pgx.Tx, error) {
+	issueRepo.BeginTxFn = func(ctx context.Context) (database.Tx, error) {
 		return mockTx, nil
 	}
-	issueRepo.CreateFn = func(ctx context.Context, tx pgx.Tx, issueKey string, pid uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
+	issueRepo.CreateFn = func(ctx context.Context, tx database.Tx, issueKey string, pid uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
 		return &model.Issue{
 			ID:        uuid.New(),
 			IssueKey:  issueKey,
@@ -135,10 +135,10 @@ func TestTransitionStatus_Handler_Success(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}, nil
 	}
-	issueRepo.BeginTxFn = func(ctx context.Context) (pgx.Tx, error) {
+	issueRepo.BeginTxFn = func(ctx context.Context) (database.Tx, error) {
 		return mockTx, nil
 	}
-	issueRepo.UpdateFn = func(ctx context.Context, tx pgx.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
+	issueRepo.UpdateFn = func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 		return &model.Issue{
 			ID:        issueID,
 			IssueKey:  "PROJ-1",
@@ -151,7 +151,7 @@ func TestTransitionStatus_Handler_Success(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}, nil
 	}
-	historyRepo.CreateFn = func(ctx context.Context, tx pgx.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
+	historyRepo.CreateFn = func(ctx context.Context, tx database.Tx, iid uuid.UUID, fieldName string, oldValue, newValue *string, operatorID *string) error {
 		return nil
 	}
 

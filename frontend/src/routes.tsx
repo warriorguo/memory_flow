@@ -4,6 +4,7 @@ import ProjectList from './pages/ProjectList';
 import ProjectDetail from './pages/ProjectDetail';
 import IssueDetail from './pages/IssueDetail';
 import MemoryList from './pages/MemoryList';
+import SyncPage from './pages/Sync';
 
 const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ const router = createBrowserRouter([
       { path: 'projects/:projectKey', element: <ProjectDetail /> },
       { path: 'issues/:issueKey', element: <IssueDetail /> },
       { path: 'memories', element: <MemoryList /> },
+      { path: 'sync', element: <SyncPage /> },
     ],
   },
 ]);

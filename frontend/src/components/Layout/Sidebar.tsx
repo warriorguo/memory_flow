@@ -4,6 +4,7 @@ import { Layout, Menu } from 'antd';
 import {
   ProjectOutlined,
   BulbOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -23,6 +24,11 @@ const Sidebar: React.FC = () => {
       icon: <BulbOutlined />,
       label: 'Memory 管理',
     },
+    {
+      key: '/sync',
+      icon: <SyncOutlined />,
+      label: '数据同步',
+    },
   ];
 
   const handleClick = ({ key }: { key: string }) => {
@@ -36,7 +42,7 @@ const Sidebar: React.FC = () => {
       </div>
       <Menu
         mode="inline"
-        selectedKeys={[location.pathname.startsWith('/projects') ? '/projects' : location.pathname.startsWith('/memories') ? '/memories' : '']}
+        selectedKeys={[location.pathname.startsWith('/projects') ? '/projects' : location.pathname.startsWith('/memories') ? '/memories' : location.pathname.startsWith('/sync') ? '/sync' : '']}
         items={menuItems}
         onClick={handleClick}
       />
