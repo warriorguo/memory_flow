@@ -183,3 +183,73 @@ func TestListProjects_Success(t *testing.T) {
 		t.Errorf("expected 2 projects, got %d", len(projects))
 	}
 }
+
+// MF-17: next_issue_number may only move forward and must stay above the
+// highest existing issue number.
+func TestUpdateProject_NextIssueNumber(t *testing.T) {
+	pid := uuid.New()
+	intptr := func(n int) *int { return &n }
+
+	newRepo := func(current, max int) *mocks.MockProjectRepo {
+		var updated *int
+		repo := &mocks.MockProjectRepo{
+			GetByIDFn: func(ctx context.Context, id uuid.UUID) (*model.Project, error) {
+				return &model.Project{ID: pid, Key: "MF", Name: "x", Status: "active", NextIssueNumber: current}, nil
+			},
+			MaxIssueNumberFn: func(ctx context.Context, id uuid.UUID) (int, error) { return max, nil },
+			UpdateFn: func(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error) {
+				updated = req.NextIssueNumber
+				return &model.Project{ID: pid, Key: "MF", NextIssueNumber: *req.NextIssueNumber}, nil
+			},
+		}
+		_ = updated
+		return repo
+	}
+
+	t.Run("accepts a forward bump above max", func(t *testing.T) {
+		repo := newRepo(17, 17)
+		svc := newTestProjectService(repo)
+		p, err := svc.Update(context.Background(), pid, model.UpdateProjectRequest{NextIssueNumber: intptr(460)})
+		if err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+		if p == nil || p.NextIssueNumber != 460 {
+			t.Fatalf("expected next_issue_number 460, got %+v", p)
+		}
+	})
+
+	t.Run("rejects below current", func(t *testing.T) {
+		repo := newRepo(17, 17)
+		svc := newTestProjectService(repo)
+		_, err := svc.Update(context.Background(), pid, model.UpdateProjectRequest{NextIssueNumber: intptr(10)})
+		if err == nil {
+			t.Fatal("expected error for value below current")
+		}
+	})
+
+	t.Run("rejects equal to or below max existing", func(t *testing.T) {
+		// current counter desynced low (5) but issues exist up to MF-20.
+		repo := newRepo(5, 20)
+		svc := newTestProjectService(repo)
+		_, err := svc.Update(context.Background(), pid, model.UpdateProjectRequest{NextIssueNumber: intptr(20)})
+		if err == nil {
+			t.Fatal("expected error for value not above max existing issue number")
+		}
+	})
+
+	t.Run("other fields skip the guard", func(t *testing.T) {
+		name := "Renamed"
+		repo := &mocks.MockProjectRepo{
+			UpdateFn: func(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error) {
+				if req.NextIssueNumber != nil {
+					t.Fatal("did not expect next_issue_number")
+				}
+				return &model.Project{ID: pid, Name: *req.Name}, nil
+			},
+		}
+		svc := newTestProjectService(repo)
+		if _, err := svc.Update(context.Background(), pid, model.UpdateProjectRequest{Name: &name}); err != nil {
+			t.Fatalf("expected success, got %v", err)
+		}
+	})
+}

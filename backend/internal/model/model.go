@@ -165,6 +165,10 @@ type UpdateProjectRequest struct {
 	DocURL           *string `json:"doc_url"`
 	OwnerID          *string `json:"owner_id"`
 	Status           *string `json:"status"`
+	// NextIssueNumber bumps the issue-key counter forward (e.g. to start a batch
+	// at a higher number). Guarded by the service: it may only increase, and must
+	// stay above the highest existing issue number.
+	NextIssueNumber *int `json:"next_issue_number"`
 }
 
 type CreateIssueRequest struct {
@@ -255,10 +259,10 @@ type ProgressSummary struct {
 // Filter types
 
 type ProjectFilter struct {
-	Name    *string
-	Status  *string
-	OwnerID *string
-	Page    int
+	Name     *string
+	Status   *string
+	OwnerID  *string
+	Page     int
 	PageSize int
 }
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -199,6 +200,11 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 		args = append(args, *req.Status)
 		argIdx++
 	}
+	if req.NextIssueNumber != nil {
+		setClauses = append(setClauses, fmt.Sprintf("next_issue_number = $%d", argIdx))
+		args = append(args, *req.NextIssueNumber)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetByID(ctx, id)
@@ -249,6 +255,31 @@ func (r *ProjectRepo) IncrementIssueNumber(ctx context.Context, tx database.Tx, 
 		return 0, "", fmt.Errorf("increment issue number: %w", err)
 	}
 	return num, key, nil
+}
+
+// MaxIssueNumber returns the highest numeric suffix among the project's issue
+// keys (e.g. 17 for "MF-17"), or 0 if the project has no issues. Parsing is done
+// in Go so the query stays portable across PostgreSQL and SQLite.
+func (r *ProjectRepo) MaxIssueNumber(ctx context.Context, id uuid.UUID) (int, error) {
+	rows, err := r.db.Query(ctx, `SELECT issue_key FROM issues WHERE project_id = $1`, id)
+	if err != nil {
+		return 0, fmt.Errorf("query issue keys: %w", err)
+	}
+	defer rows.Close()
+
+	max := 0
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return 0, fmt.Errorf("scan issue key: %w", err)
+		}
+		if idx := strings.LastIndex(key, "-"); idx >= 0 {
+			if n, err := strconv.Atoi(key[idx+1:]); err == nil && n > max {
+				max = n
+			}
+		}
+	}
+	return max, rows.Err()
 }
 
 func escapeLike(s string) string {

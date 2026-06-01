@@ -50,6 +50,33 @@ func (s *ProjectService) Update(ctx context.Context, id uuid.UUID, req model.Upd
 	if req.Status != nil && !validProjectStatuses[*req.Status] {
 		return nil, fmt.Errorf("invalid status: must be 'active', 'paused', or 'archived'")
 	}
+
+	if req.NextIssueNumber != nil {
+		current, err := s.repo.GetByID(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("load project: %w", err)
+		}
+		if current == nil {
+			return nil, nil // not found — handler turns this into a 404
+		}
+		// May only move the counter forward, never below the current value...
+		if *req.NextIssueNumber < current.NextIssueNumber {
+			return nil, fmt.Errorf("next_issue_number (%d) cannot be less than the current value (%d)",
+				*req.NextIssueNumber, current.NextIssueNumber)
+		}
+		// ...and must stay strictly above the highest existing issue number so it
+		// can never collide with an existing issue key (guards against a desynced
+		// counter too).
+		maxNum, err := s.repo.MaxIssueNumber(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("determine max issue number: %w", err)
+		}
+		if *req.NextIssueNumber <= maxNum {
+			return nil, fmt.Errorf("next_issue_number (%d) must be greater than the highest existing issue number (%d)",
+				*req.NextIssueNumber, maxNum)
+		}
+	}
+
 	return s.repo.Update(ctx, id, req)
 }
 

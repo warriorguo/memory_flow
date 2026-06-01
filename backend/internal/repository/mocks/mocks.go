@@ -17,6 +17,7 @@ type MockProjectRepo struct {
 	UpdateFn               func(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	ArchiveFn              func(ctx context.Context, id uuid.UUID) error
 	IncrementIssueNumberFn func(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error)
+	MaxIssueNumberFn       func(ctx context.Context, id uuid.UUID) (int, error)
 }
 
 func (m *MockProjectRepo) Create(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error) {
@@ -42,6 +43,12 @@ func (m *MockProjectRepo) Archive(ctx context.Context, id uuid.UUID) error {
 }
 func (m *MockProjectRepo) IncrementIssueNumber(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error) {
 	return m.IncrementIssueNumberFn(ctx, tx, id)
+}
+func (m *MockProjectRepo) MaxIssueNumber(ctx context.Context, id uuid.UUID) (int, error) {
+	if m.MaxIssueNumberFn != nil {
+		return m.MaxIssueNumberFn(ctx, id)
+	}
+	return 0, nil
 }
 
 // MockIssueRepo is a mock implementation of repository.IssueRepository.

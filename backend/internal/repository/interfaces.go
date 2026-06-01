@@ -17,6 +17,9 @@ type ProjectRepository interface {
 	Update(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error)
 	Archive(ctx context.Context, id uuid.UUID) error
 	IncrementIssueNumber(ctx context.Context, tx database.Tx, id uuid.UUID) (int, string, error)
+	// MaxIssueNumber returns the highest numeric suffix among the project's issue
+	// keys (0 if the project has no issues).
+	MaxIssueNumber(ctx context.Context, id uuid.UUID) (int, error)
 }
 
 // IssueRepository defines the interface for issue data access.

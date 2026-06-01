@@ -132,6 +132,74 @@ func TestSQLiteMigrationsAndRepos(t *testing.T) {
 	}
 }
 
+// MF-17: MaxIssueNumber reads the highest issue-key suffix, and Update persists
+// a bumped next_issue_number through a real SQLite DB.
+func TestMaxIssueNumberAndBump(t *testing.T) {
+	dir := t.TempDir()
+	rawDB, err := database.OpenSQLiteDB(filepath.Join(dir, "mf.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.MigrateSQLite(rawDB, sqlitemigrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	db := database.WrapSQLite(rawDB)
+	defer db.Close()
+	ctx := context.Background()
+
+	projectRepo := repository.NewProjectRepo(db)
+	issueRepo := repository.NewIssueRepo(db)
+
+	proj, err := projectRepo.Create(ctx, model.CreateProjectRequest{Key: "MF", Name: "Demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No issues yet -> max 0.
+	if n, err := projectRepo.MaxIssueNumber(ctx, proj.ID); err != nil || n != 0 {
+		t.Fatalf("empty MaxIssueNumber got %d err %v", n, err)
+	}
+
+	// Create three issues (MF-1, MF-2, MF-3).
+	for i := 0; i < 3; i++ {
+		tx, _ := issueRepo.BeginTx(ctx)
+		num, key, err := projectRepo.IncrementIssueNumber(ctx, tx, proj.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := issueRepo.Create(ctx, tx, key+"-"+itoa(num), proj.ID, model.CreateIssueRequest{Type: "bug", Title: "x"}); err != nil {
+			t.Fatal(err)
+		}
+		_ = tx.Commit(ctx)
+	}
+	if n, _ := projectRepo.MaxIssueNumber(ctx, proj.ID); n != 3 {
+		t.Fatalf("MaxIssueNumber got %d want 3", n)
+	}
+
+	// Bump the counter to 460 and confirm it persists.
+	want := 460
+	updated, err := projectRepo.Update(ctx, proj.ID, model.UpdateProjectRequest{NextIssueNumber: &want})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.NextIssueNumber != 460 {
+		t.Fatalf("persisted next_issue_number got %d want 460", updated.NextIssueNumber)
+	}
+	// Re-read to be sure.
+	again, _ := projectRepo.GetByID(ctx, proj.ID)
+	if again.NextIssueNumber != 460 {
+		t.Fatalf("reloaded next_issue_number got %d want 460", again.NextIssueNumber)
+	}
+
+	// The next created issue should be MF-461.
+	tx, _ := issueRepo.BeginTx(ctx)
+	num, key, _ := projectRepo.IncrementIssueNumber(ctx, tx, proj.ID)
+	_ = tx.Commit(ctx)
+	if got := key + "-" + itoa(num); got != "MF-461" {
+		t.Fatalf("next issue key got %s want MF-461", got)
+	}
+}
+
 func strp(s string) *string { return &s }
 func itoa(n int) string {
 	if n == 0 {
