@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,20 @@ type Issue struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Tags        []Tag     `json:"tags,omitempty"`
+}
+
+// MarshalJSON serializes an Issue with its key exposed under both `key` (matching
+// the project resource's field, see [Project.Key]) and `issue_key` (kept as a
+// deprecated alias for backward compatibility). See MF-18.
+func (i Issue) MarshalJSON() ([]byte, error) {
+	type alias Issue
+	return json.Marshal(struct {
+		Key string `json:"key"`
+		alias
+	}{
+		Key:   i.IssueKey,
+		alias: alias(i),
+	})
 }
 
 type IssueHistory struct {
