@@ -45,7 +45,7 @@ func NewClient(explicit string, timeout time.Duration) *Client {
 	return &Client{
 		Explicit: explicit,
 		Timeout:  timeout,
-		http:     &http.Client{Timeout: timeout},
+		http:     &http.Client{Timeout: timeout, Transport: newTransport()},
 	}
 }
 
@@ -112,14 +112,25 @@ func (c *Client) Resolve() error {
 
 // probe reports whether a Memory Flow API is answering at base.
 func probe(base string) bool {
-	client := &http.Client{Timeout: probeTimeout}
+	ok, err := probeOnce(base)
+	// A first contact that fails TLS verification may just mean the platform's
+	// trust store is unreachable; retry against a CA bundle before concluding
+	// the instance is down. See [enableTLSFallback].
+	if err != nil && isTLSVerifyError(err) && enableTLSFallback() {
+		ok, _ = probeOnce(base)
+	}
+	return ok
+}
+
+func probeOnce(base string) (bool, error) {
+	client := &http.Client{Timeout: probeTimeout, Transport: newTransport()}
 	resp, err := client.Get(strings.TrimRight(base, "/") + "/api/v1/projects?page_size=1")
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
-	return resp.StatusCode == http.StatusOK
+	return resp.StatusCode == http.StatusOK, nil
 }
 
 // request performs an API call and returns the raw response body. On a
@@ -131,6 +142,15 @@ func (c *Client) request(method, path string, body any) (json.RawMessage, error)
 	if err == nil {
 		return raw, nil
 	}
+
+	// Retry once against a CA bundle if the platform verifier is unusable.
+	if isTLSVerifyError(err) && enableTLSFallback() {
+		c.http.Transport = newTransport()
+		if raw, tlsErr := c.attempt(method, path, body); tlsErr == nil {
+			return raw, nil
+		}
+	}
+
 	var netErr *connError
 	if !asConnError(err, &netErr) || c.source != "cache" {
 		return nil, err
