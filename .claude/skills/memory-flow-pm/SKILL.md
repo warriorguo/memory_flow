@@ -10,505 +10,315 @@ description: >
   Trigger on phrases like "file a bug", "create a requirement", "what are the open issues",
   "record this", "recall memory", "what's the project status", "list bugs", "check progress",
   "create project", "update issue", "mark as done".
-compatibility: Reaches the remote Memory Flow API, or falls back to the local standalone app when the remote is unreachable
-allowed-tools: Bash(curl:*)
+compatibility: Uses the `mf` CLI, which reaches the remote Memory Flow API or falls back to the local standalone app
+allowed-tools: Bash(mf:*)
 metadata:
   author: warriorguo
-  version: "4.1"
+  version: "5.0"
   service-url: "https://memory-flow.local.playquota.com"
   local-fallback-url: "http://127.0.0.1:8080"
 ---
 
 # Memory Flow Project Management Skill
 
-Interact with the Memory Flow project management platform to manage projects, issues (bugs/requirements), track progress, and manage memories.
+Manage projects, issues (bugs/requirements), progress, and memories on the Memory Flow platform.
 
-## Configuration
+Everything goes through the **`mf` CLI**. Do not use `curl`, `jq`, or `python3`
+against the API — `mf` covers every endpoint, resolves the instance itself, and
+formats output for reading. If a command you need seems to be missing, check
+`mf help <topic>` before reaching for `curl`.
 
-```
-Remote (home server): https://memory-flow.local.playquota.com
-Local fallback:       the standalone app (~/.memory_flow/endpoint, else http://127.0.0.1:8080)
-API Prefix:           /api/v1
-```
-
-No authentication required for normal endpoints (all public).
-
-## Base URL resolution (Run FIRST, on Every Activation)
-
-The platform runs in two places: the **remote home server** and a **local
-standalone app** (single binary / "Memory Flow.app") used when off the home
-network. **Always resolve the base URL before any other call** — prefer the
-remote, and **fall back to the local instance when the remote is unreachable**:
+## Activation (run FIRST, every time)
 
 ```bash
-# Resolve the Memory Flow base URL: remote if reachable, else the local app.
-REMOTE="https://memory-flow.local.playquota.com"
-ENDPOINT_FILE="$HOME/.memory_flow/endpoint"
-reachable() { curl -s --max-time 2 -o /dev/null "$1/api/v1/projects"; }
-if reachable "$REMOTE"; then
-  MF="$REMOTE"
-elif [ -f "$ENDPOINT_FILE" ] && reachable "$(cat "$ENDPOINT_FILE")"; then
-  MF="$(cat "$ENDPOINT_FILE")"   # native app's actual (possibly random) port
-elif reachable "http://127.0.0.1:8080"; then
-  MF="http://127.0.0.1:8080"     # standalone CLI default port
-else
-  echo "ERROR: Memory Flow is unreachable (remote down and no local instance running)." >&2
-  echo "Start the local app ('open \"/Applications/Memory Flow.app\"' or 'memory_flow serve') and retry." >&2
-  exit 1
-fi
-echo "Using Memory Flow at: $MF"
+mf ctx
 ```
 
-**How to use `${MF}` in every command below:** each example uses `${MF}` as the
-base URL. Because each shell invocation is fresh, **prepend the resolver block
-above to your Bash call** (or substitute the resolved literal URL). The simplest
-pattern is one Bash call that resolves then acts:
-
-```bash
-# ... paste the resolver block above ...
-curl -s "${MF}/api/v1/projects" | python3 -m json.tool
-```
-
-> Notes
-> - The local fallback is the same dataset only if it has been synced (the user
->   syncs via the app's 同步 page or `memory_flow sync pull/push`). When you fall
->   back to local, **tell the user you are using the local instance**, since it
->   may be slightly behind the server.
-> - `~/.memory_flow/endpoint` is written by the standalone on startup and removed
->   on graceful shutdown; the resolver health-checks it, so a stale file is
->   ignored.
-
-## Initialization (Run on Every Activation)
-
-**IMPORTANT:** After resolving `${MF}`, you MUST first list all projects to understand the landscape before doing anything else:
-
-```bash
-# (resolve ${MF} first — see "Base URL resolution" above)
-curl -s "${MF}/api/v1/projects" | python3 -m json.tool
-```
-
-Review the returned projects and internalize each project's **key**, **name**, **summary**, and **scope** so you can:
+This prints the instance in use and every project's **key**, **name**, **status**,
+and **summary**. Internalize them so you can:
 - Route issues to the correct project when filing bugs/requirements
-- Understand which project the user is referring to by context (e.g. a frontend bug likely belongs to a project with a frontend scope)
-- Avoid asking the user which project to use when it's obvious from context
+- Infer which project the user means from context (a frontend bug belongs to the project with a frontend scope)
+- Avoid asking which project to use when it is obvious
+
+If `mf ctx` reports a **local** instance, tell the user — the local standalone's
+data may lag the home server until synced.
+
+> **Instance resolution** is automatic: `--url` / `$MEMORY_FLOW_URL`, else the
+> remote home server, else the local standalone app (`~/.memory_flow/endpoint`,
+> then `http://127.0.0.1:8080`). `mf endpoint` shows which one is live. If
+> everything is unreachable, `mf` says so and exits non-zero — relay that and
+> suggest starting the local app (`open "/Applications/Memory Flow.app"`).
+
+## Global flags
+
+Accepted anywhere in the command line:
+
+| Flag | Effect |
+|------|--------|
+| `--json` | Print the raw API response instead of formatted text |
+| `--url <URL>` | Pin the instance instead of auto-resolving |
+| `--refresh` | Ignore the cached endpoint and probe again |
+| `--timeout <SECONDS>` | Request timeout (default 30) |
+
+Default to the formatted output. Reach for `--json` only when you need a field
+the text view omits.
 
 ---
 
-## Project Management
+## Issues (bugs / requirements)
 
-### List Projects
-
-```bash
-curl -s ${MF}/api/v1/projects | python3 -m json.tool
-```
-
-Supports query params: `name`, `status` (active/paused/archived), `owner_id`, `page`, `page_size`.
-
-### Create Project
+### List
 
 ```bash
-curl -s -X POST ${MF}/api/v1/projects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "key": "MF",
-    "name": "Memory Flow",
-    "summary": "Project management platform",
-    "git_url": "https://github.com/warriorguo/memory_flow.git",
-    "owner_id": "admin"
-  }' | python3 -m json.tool
+mf issues MF                          # open issues only (the usual question)
+mf issues MF --priority P0
+mf issues MF --type bug --assignee andrew
+mf issues MF --keyword "atlas export"
+mf issues MF --all                    # include done/closed/rejected
 ```
 
-Required: `key` (uppercase alphanumeric, 2-10 chars), `name`.
-Optional: `summary`, `description`, `design_principles`, `git_url`, `cicd_url`, `doc_url`, `owner_id`.
+Filters: `--status`, `--type` (bug/requirement), `--priority` (P0/P1/P2),
+`--assignee`, `--keyword`, `--all`, `--limit`, `--page`.
 
-### Get / Update / Archive Project
+Output is already the table to present: Key | Title | Type | Priority | Status | Assignee.
 
-Use the project key (e.g. `MF`) or UUID in the URL path:
+### Show
 
 ```bash
-# Get by key
-curl -s ${MF}/api/v1/projects/MF | python3 -m json.tool
-
-# Update by key
-curl -s -X PUT ${MF}/api/v1/projects/MF \
-  -H "Content-Type: application/json" \
-  -d '{"name": "New Name", "status": "active"}' | python3 -m json.tool
-
-# Archive by key
-curl -s -X DELETE ${MF}/api/v1/projects/MF | python3 -m json.tool
+mf issue show ORT-100
+mf issue show ORT-100 --deps --history
 ```
 
----
+### Filing issues (analyze-then-create workflow)
 
-## Issue Management (Bugs / Requirements)
+When a user describes a bug or requirement, **before creating anything**:
 
-### List Issues
+**Step 1 — Analyze scope.** Does it span multiple subsystems? Are there
+sequential steps with dependencies? Does it mix a bug fix with a new feature?
+Or is it a single, well-scoped change? If it's single and well-scoped, skip to
+Step 3.
 
-```bash
-curl -s "${MF}/api/v1/projects/MF/issues?page=1&page_size=20" | python3 -m json.tool
-```
-
-Query params (all optional):
-- `type`: `requirement` or `bug`
-- `status`: `todo`, `in_progress`, `review`, `testing`, `done`, `closed`, `rejected`
-- `priority`: `P0`, `P1`, `P2`
-- `assignee_id`, `keyword`, `page`, `page_size`
-
-**Present results as a clean table:** Key | Title | Type | Priority | Status | Assignee
-
-### Filing Issues (Analyze-then-Create Workflow)
-
-When a user describes a bug or requirement, follow this workflow **before** creating any issues:
-
-#### Step 1: Analyze scope and complexity
-
-Before creating issues, analyze the user's description:
-- Does it involve multiple subsystems (e.g., backend + frontend, or multiple services)?
-- Are there sequential implementation steps with dependencies?
-- Does it mix different types (e.g., a bug fix + a new feature)?
-- Is it a single, well-scoped change?
-
-**If the answer is "single, well-scoped change"** -- skip to Step 3 (create one issue directly).
-
-#### Step 2: Propose decomposition (if needed)
-
-Present a decomposition plan to the user before creating anything:
+**Step 2 — Propose a decomposition** and wait for the user to confirm, adjust,
+or override:
 
 > **Proposed issue breakdown:**
 >
-> 1. `[requirement]` P1 -- Title of first issue
-> 2. `[requirement]` P2 -- Title of second issue
-> 3. `[bug]` P1 -- Title of third issue
+> 1. `[requirement]` P1 — Title of first issue
+> 2. `[requirement]` P2 — Title of second issue
+> 3. `[bug]` P1 — Title of third issue
 >
 > **Dependencies:**
-> - #2 depends on #1 (critical) -- cannot start without #1's API
-> - #3 depends on #1 (recommended) -- related but not blocking
+> - #2 depends on #1 (critical) — cannot start without #1's API
+> - #3 depends on #1 (recommended) — related but not blocking
 
-Wait for the user to confirm, adjust, or override before proceeding.
-
-#### Step 3: Create issues
+**Step 3 — Create**, in dependency order (dependencies first):
 
 ```bash
-curl -s -X POST "${MF}/api/v1/projects/MF/issues" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "bug",
-    "title": "Issue title",
-    "description": "Detailed description",
-    "priority": "P1",
-    "assignee_id": "someone"
-  }' | python3 -m json.tool
+mf issue create MF --type bug --title "Search returns empty results" \
+  --priority P1 --assignee andrew --desc "Detailed description"
 ```
 
-Required: `type` (bug/requirement), `title`.
-Optional: `description`, `priority` (P0/P1/P2, default P2), `assignee_id`, `source`, `version`, `git_url`, `pr_url`, `doc_url`.
+For a long or multi-line description, pipe it in rather than quoting it:
 
-Priority guidelines:
-- **P0**: Blocking, must fix immediately
-- **P1**: Important but not blocking core flow
-- **P2**: Normal, can be scheduled
+```bash
+mf issue create MF --type requirement --title "Add export button" --desc-file - <<'EOF'
+Steps to reproduce…
 
-When creating multiple issues from a decomposition, create them in dependency order (dependencies first) so that IDs are available for linking.
+Expected: …
+EOF
+```
 
-After creation, confirm with the issue key (e.g., "MF-3").
+Required: `--type` (bug/requirement), `--title`.
+Optional: `--desc`/`--desc-file`, `--priority` (default P2), `--assignee`,
+`--source`, `--version`, `--git-url`, `--pr-url`, `--doc-url`.
 
-#### Step 4: Set dependencies (if decomposed)
+Priority: **P0** blocking, fix immediately · **P1** important, not blocking the
+core flow · **P2** normal, schedulable.
 
-After batch-creating issues, automatically set dependencies using the dependency API (see "Issue Dependencies" section below). Ensure:
-- Dependency direction is correct (`depends_on` vs `blocks`)
-- Severity is correct (`critical` for hard blockers, `recommended` for soft associations)
-
-Report the final result as a summary table:
+**Step 4 — Set dependencies** (see below), then report a summary table:
 
 > | Key | Title | Type | Priority | Depends On |
 > |-----|-------|------|----------|------------|
-> | MF-9 | Backend API for X | requirement | P1 | -- |
+> | MF-9 | Backend API for X | requirement | P1 | — |
 > | MF-10 | Frontend for X | requirement | P2 | MF-9 (critical) |
 
-### Get Issue by Key
-
-Look up an issue directly by its key (e.g., MF-1, OZX-22):
+### Update
 
 ```bash
-curl -s "${MF}/api/v1/issues?key=MF-1" | python3 -m json.tool
+mf issue update MF-1 --title "Updated title" --priority P0 --assignee someone
+mf issue update MF-1 --desc-file notes.md
 ```
 
-### Get Issue Detail
+Updatable: `--title`, `--desc`/`--desc-file`, `--priority`, `--assignee`,
+`--type`, `--source`, `--version`, `--git-url`, `--pr-url`, `--doc-url`.
+All changes are recorded in the issue history automatically.
 
-Use the issue key (e.g. `MF-1`) or UUID in the URL path:
+### Status
 
 ```bash
-curl -s "${MF}/api/v1/issues/MF-1" | python3 -m json.tool
+mf issue start MF-1              # → in_progress
+mf issue status MF-1 review
+mf issue status MF-1 done        # walks intermediate hops as needed
 ```
 
-### Update Issue
+The workflow graph:
+
+```
+todo        → in_progress, suspended, rejected
+in_progress → review, done, suspended, todo
+review      → testing, in_progress
+testing     → done, in_progress
+done        → closed, in_progress
+suspended   → todo
+rejected    → todo
+```
+
+`mf` walks multi-hop paths for you — closing a `todo` issue performs
+todo → in_progress → done. Pass `--direct` to require a single legal hop.
+
+### History
 
 ```bash
-curl -s -X PUT "${MF}/api/v1/issues/MF-1" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Updated title",
-    "priority": "P0",
-    "assignee_id": "new-assignee"
-  }' | python3 -m json.tool
-```
-
-Updatable fields: `title`, `description`, `priority`, `assignee_id`, `source`, `version`, `git_url`, `pr_url`, `doc_url`.
-All field changes are automatically tracked in issue history.
-
-### Transition Issue Status
-
-```bash
-curl -s -X PATCH "${MF}/api/v1/issues/MF-1/status" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}' | python3 -m json.tool
-```
-
-Allowed transitions:
-```
-todo        -> in_progress, suspended, rejected
-in_progress -> review, done, suspended, todo
-suspended   -> todo
-review      -> testing, in_progress
-testing     -> done, in_progress
-done        -> closed, in_progress
-rejected    -> todo
-```
-
-### Get Issue History
-
-```bash
-curl -s "${MF}/api/v1/issues/MF-1/history" | python3 -m json.tool
+mf issue history MF-1
 ```
 
 ---
 
-## Issue Dependencies
+## Completing an issue (required workflow)
 
-Dependencies express relationships between issues, including across projects (e.g., ORT-20 depends on MF-5).
-
-### Create Dependency
+An issue must carry its commit link before it closes. One command does both:
 
 ```bash
-curl -s -X POST "${MF}/api/v1/issues/MF-2/dependencies" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target_issue_id": "{targetIssueUUID}",
-    "type": "depends_on",
-    "severity": "critical"
-  }' | python3 -m json.tool
+mf issue done MF-1 --git HEAD
 ```
 
-Note: The URL path accepts issue key or UUID, but `target_issue_id` in the body must still be a UUID.
-
-- `type`: `depends_on` (this issue needs the target) or `blocks` (this issue blocks the target)
-- `severity`: `critical` (hard blocker -- target must be done first; priority inherits upward) or `recommended` (soft association, no priority inheritance)
-
-### List Dependencies
+`--git` accepts a full URL, a short sha, or any commit-ish (`HEAD`, a branch).
+The commit URL is built from the project's `git_url`, falling back to the origin
+remote of `--repo` (default: the current directory). Split into two steps when
+you prefer:
 
 ```bash
-curl -s "${MF}/api/v1/issues/MF-2/dependencies" | python3 -m json.tool
+mf issue attach-git MF-1 5253083     # or: --pr 42 to also record the PR
+mf issue done MF-1
 ```
 
-Returns dependencies with full issue details for both source and target.
+`mf issue done` **refuses** to close an issue whose `git_url` is empty. That
+guard is the point — do not reach for `--force` unless the user asks for it.
 
-### Delete Dependency
+**Commit message format** — every commit for an issue:
 
-```bash
-curl -s -X DELETE "${MF}/api/v1/issues/MF-2/dependencies/{depId}"
+```
+[{ISSUE_KEY}] description of the change
 ```
 
-### Get Dependency Tree
-
-```bash
-curl -s "${MF}/api/v1/issues/MF-2/dependency-tree" | python3 -m json.tool
-```
-
-Returns a tree structure with the issue as root, expanding `depends_on` downward and `blocks` upward. Each node includes: `issue_key`, `title`, `status`, `priority`, `project_key`, `project_name`, `severity`.
-
-### Get Effective Priority
-
-```bash
-curl -s "${MF}/api/v1/issues/MF-2/effective-priority" | python3 -m json.tool
-```
-
-Returns the effective priority considering critical dependency chains (inherits the highest priority from the chain).
+Examples: `[MF-1] Add image rotation support` · `[MF-3] Fix memory search returning empty results`
 
 ---
 
-## Memory Management
+## Dependencies
 
-### Create Memory
-
-```bash
-curl -s -X POST "${MF}/api/v1/memories" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "{projectId}",
-    "type": "recall",
-    "title": "Memory title",
-    "content": "Detailed content to remember",
-    "source_object_type": "project",
-    "source_object_id": "{objectId}"
-  }' | python3 -m json.tool
-```
-
-Required: `type` (recall/write), `title`, `content`.
-Optional: `project_id`, `source_object_type` (project/requirement/bug), `source_object_id`.
-
-Memory types:
-- **recall**: Searchable project context — design decisions, root causes, constraints, decision records
-- **write**: Written artifacts — AI-generated drafts, task summaries, supplementary context
-
-### List / Search Memories
+Dependencies work across projects (ORT-20 can depend on MF-5).
 
 ```bash
-curl -s "${MF}/api/v1/memories?project_id={projectId}&type={type}&keyword={keyword}&page=1&page_size=20" | python3 -m json.tool
+mf issue dep add MF-10 MF-9 --type depends_on --severity critical
+mf issue dep list MF-10
+mf issue dep tree MF-10
+mf issue dep rm MF-10 <DEPENDENCY_ID>
+mf issue priority MF-10          # effective priority, including inherited
 ```
 
-Query params: `project_id`, `type` (recall/write), `keyword`, `page`, `page_size`.
+- `--type`: `depends_on` (this issue needs the target) or `blocks` (this issue blocks the target)
+- `--severity`: `critical` (hard blocker — target must finish first; priority inherits upward) or `recommended` (soft association, no inheritance)
 
-### Get / Update / Delete Memory
-
-```bash
-# Get
-curl -s "${MF}/api/v1/memories/{id}" | python3 -m json.tool
-
-# Update
-curl -s -X PUT "${MF}/api/v1/memories/{id}" \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Updated", "content": "New content"}' | python3 -m json.tool
-
-# Delete
-curl -s -X DELETE "${MF}/api/v1/memories/{id}"
-```
+Both sides are given as issue keys; `mf` resolves the UUIDs the API wants.
 
 ---
 
-## Progress & Statistics
-
-### Progress Summary
+## Projects
 
 ```bash
-curl -s "${MF}/api/v1/projects/MF/progress/summary" | python3 -m json.tool
+mf projects                            # or: mf projects --status active
+mf project show MF
+mf project create NEW --name "New Project" --summary "…" --git-url "https://github.com/…"
+mf project update MF --name "New Name" --status active
+mf project archive MF
 ```
 
-Returns: `status_counts` (map), `priority_counts` (map), `type_counts` (map), `total`.
+Project key: uppercase alphanumeric, 2–10 chars. Required on create: `<KEY>` and `--name`.
+Optional: `--summary`, `--desc`/`--desc-file`, `--design-principles`, `--git-url`,
+`--cicd-url`, `--doc-url`, `--owner`.
 
-**Present as natural language**, e.g.:
-> Project MF: 12 total issues (3 done, 5 in progress, 4 todo). 1 P0, 3 P1, 8 P2.
+`mf project update` also takes `--next-issue-number N` to bump the issue-key counter forward.
 
-### Trend Data
+---
+
+## Progress
 
 ```bash
-curl -s "${MF}/api/v1/projects/MF/progress/trend?days=30" | python3 -m json.tool
+mf project progress MF
+mf project progress MF --trend 30
 ```
 
-Returns daily `created` and `done` counts.
+**Summarize in natural language**, e.g.:
+> Project MF: 20 issues total — 3 todo, 1 in progress, 16 done. 10 P1, 10 P2.
+
+---
+
+## Memories
+
+```bash
+mf memory add --title "Why sync uses last-write-wins" --content "…" --project MF
+mf memory add --title "Root cause of MF-11" --content-file notes.md --issue MF-11
+mf memory search "sync conflict" --project MF
+mf memory search --project MF --type recall --full
+mf memory show <MEMORY_ID>
+mf memory update <MEMORY_ID> --content "…"
+mf memory rm <MEMORY_ID>
+```
+
+- **recall** — reusable project context: design decisions, root causes, constraints, decision records
+- **write** — produced artifacts: drafts, task summaries, supplementary context
+
+`--issue` attaches the memory to an issue and infers its project.
 
 ---
 
 ## Tags
 
 ```bash
-# List tags
-curl -s ${MF}/api/v1/tags | python3 -m json.tool
-
-# Create tag
-curl -s -X POST ${MF}/api/v1/tags \
-  -H "Content-Type: application/json" \
-  -d '{"name": "frontend", "color": "#1890ff"}' | python3 -m json.tool
-
-# Add tag to issue (accepts issue key or UUID)
-curl -s -X POST "${MF}/api/v1/issues/MF-1/tags" \
-  -H "Content-Type: application/json" \
-  -d '{"tag_id": "{tagId}"}' | python3 -m json.tool
-
-# Remove tag from issue
-curl -s -X DELETE "${MF}/api/v1/issues/MF-1/tags/{tagId}"
-
-# Add/remove tag to/from memory (same pattern)
-curl -s -X POST "${MF}/api/v1/memories/{memoryId}/tags" \
-  -H "Content-Type: application/json" \
-  -d '{"tag_id": "{tagId}"}' | python3 -m json.tool
+mf tags
+mf tag create frontend --color '#1890ff'
+mf issue tag MF-1 frontend backend      # creates any tag that doesn't exist yet
+mf issue untag MF-1 frontend
 ```
 
 ---
 
-## API Quick Reference
+## Command reference
 
-| Action | Method | Endpoint |
-|--------|--------|----------|
-| List projects | GET | `/api/v1/projects` |
-| Create project | POST | `/api/v1/projects` |
-| Get project | GET | `/api/v1/projects/{key}` |
-| Update project | PUT | `/api/v1/projects/{key}` |
-| Archive project | DELETE | `/api/v1/projects/{key}` |
-| List issues | GET | `/api/v1/projects/{key}/issues` |
-| Create issue | POST | `/api/v1/projects/{key}/issues` |
-| Search issue by key | GET | `/api/v1/issues?key={issueKey}` |
-| Get issue | GET | `/api/v1/issues/{issueKey}` |
-| Update issue | PUT | `/api/v1/issues/{issueKey}` |
-| Transition status | PATCH | `/api/v1/issues/{issueKey}/status` |
-| Issue history | GET | `/api/v1/issues/{issueKey}/history` |
-| Create dependency | POST | `/api/v1/issues/{issueKey}/dependencies` |
-| List dependencies | GET | `/api/v1/issues/{issueKey}/dependencies` |
-| Delete dependency | DELETE | `/api/v1/issues/{issueKey}/dependencies/{depId}` |
-| Dependency tree | GET | `/api/v1/issues/{issueKey}/dependency-tree` |
-| Effective priority | GET | `/api/v1/issues/{issueKey}/effective-priority` |
-| Progress summary | GET | `/api/v1/projects/{key}/progress/summary` |
-| Progress trend | GET | `/api/v1/projects/{key}/progress/trend` |
-| List memories | GET | `/api/v1/memories` |
-| Create memory | POST | `/api/v1/memories` |
-| Get memory | GET | `/api/v1/memories/{id}` |
-| Update memory | PUT | `/api/v1/memories/{id}` |
-| Delete memory | DELETE | `/api/v1/memories/{id}` |
-| List tags | GET | `/api/v1/tags` |
-| Create tag | POST | `/api/v1/tags` |
-| Add tag to issue | POST | `/api/v1/issues/{issueKey}/tags` |
-| Remove tag from issue | DELETE | `/api/v1/issues/{issueKey}/tags/{tagId}` |
-| Add tag to memory | POST | `/api/v1/memories/{id}/tags` |
-| Remove tag from memory | DELETE | `/api/v1/memories/{id}/tags/{tagId}` |
+| Action | Command |
+|--------|---------|
+| Bootstrap (endpoint + projects) | `mf ctx` |
+| Which instance am I on | `mf endpoint` |
+| List projects | `mf projects` |
+| Show / create / update / archive project | `mf project show\|create\|update\|archive …` |
+| Project progress | `mf project progress <KEY> [--trend N]` |
+| List issues | `mf issues <PROJECT_KEY> [filters]` |
+| Show issue | `mf issue show <KEY> [--deps] [--history]` |
+| Create issue | `mf issue create <PROJECT_KEY> --type T --title "…"` |
+| Update issue | `mf issue update <KEY> [--field …]` |
+| Start / transition | `mf issue start <KEY>` · `mf issue status <KEY> <STATUS>` |
+| Record commit | `mf issue attach-git <KEY> [<sha\|url>]` |
+| Complete issue | `mf issue done <KEY> --git HEAD` |
+| Issue history | `mf issue history <KEY>` |
+| Dependencies | `mf issue dep add\|list\|tree\|rm …` |
+| Effective priority | `mf issue priority <KEY>` |
+| Memories | `mf memory add\|search\|show\|update\|rm …` |
+| Tags | `mf tags` · `mf tag create` · `mf issue tag\|untag` |
+| Help | `mf help [issue\|project\|memory\|tag\|workflow]` |
 
-> **Note:** All `{key}` and `{issueKey}` placeholders also accept UUIDs for backward compatibility.
-
-## Response Format
-
-List: `{"data": [...], "total": N, "page": N, "page_size": N}`
-Single: `{"data": {...}}`
-Error: `{"error": "message"}`
-
----
-
-## Completing an Issue (Required Workflow)
-
-When an issue is done, you **MUST** follow these steps before marking it as `done`:
-
-1. **Fill `git_url`** — update the issue with the commit URL or PR link. This field must NOT be left empty.
-
-```bash
-curl -s -X PUT "${MF}/api/v1/issues/MF-1" \
-  -H "Content-Type: application/json" \
-  -d '{"git_url": "https://github.com/owner/repo/commit/{sha}"}' | python3 -m json.tool
-```
-
-2. **Commit message format** — all commits related to an issue must follow this format:
-
-```
-[{ISSUE_KEY}] description of the change
-```
-
-Examples:
-- `[MF-1] Add image rotation support`
-- `[MF-3] Fix memory search returning empty results`
-
-3. **Transition to done** — only after `git_url` is set.
-
-```bash
-curl -s -X PATCH "${MF}/api/v1/issues/MF-1/status" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "done"}' | python3 -m json.tool
-```
+Every command accepts an issue key (`MF-1`) or project key (`MF`) wherever an
+identifier is expected; UUIDs also work.
 
 ---
 
@@ -516,11 +326,11 @@ curl -s -X PATCH "${MF}/api/v1/issues/MF-1/status" \
 
 1. **Infer type from context**: something broken = `bug`; something new = `requirement`
 2. **Choose memory type wisely**: `recall` for reusable context, `write` for output artifacts
-3. **Project key format**: uppercase alphanumeric, 2-10 chars (e.g., MF, PROJ)
-4. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g., MF-1, MF-2)
-5. **Default to open items** when listing issues (exclude done/closed/rejected) unless user asks for all
-6. **Summarize in natural language** for progress queries, don't dump raw JSON
-7. **No auth needed** — all endpoints are public, just call them directly
-8. **Completing issues**: always fill `git_url` and use `[ISSUE_KEY] description` format in commits before marking done
-9. **Analyze before filing**: always evaluate whether a request should be one issue or multiple before creating anything. Present the decomposition plan and wait for user confirmation.
-10. **Set dependencies after batch creation**: when creating multiple related issues, always establish dependency links using the dependency API. Use `critical` severity for hard blockers and `recommended` for soft associations.
+3. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g. MF-1, MF-2)
+4. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected; add `--all` when the user asks for everything
+5. **Summarize progress in prose**, don't dump the table
+6. **Analyze before filing**: decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
+7. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
+8. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
+9. **No auth needed** — all endpoints are public
+10. **If `mf` is missing**, build and install it from the memory_flow repo: `make install-mf PREFIX=/opt/homebrew`

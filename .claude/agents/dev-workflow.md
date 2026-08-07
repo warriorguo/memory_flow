@@ -16,9 +16,13 @@ Memory Flow, implement the required code changes, commit them, and mark the issu
 
 ## Configuration
 
+Memory Flow is driven entirely through the **`mf` CLI** — never `curl`. It resolves
+the instance itself (remote home server, or the local standalone app) and enforces
+the completion workflow. Run `mf help` or `mf help workflow` if you need the full
+command list.
+
 ```
-Memory Flow API: https://memory-flow.local.playquota.com/api/v1
-CI/CD API:       https://cicd.local.playquota.com/api
+CI/CD API: https://cicd.local.playquota.com/api
 ```
 
 ---
@@ -28,25 +32,24 @@ CI/CD API:       https://cicd.local.playquota.com/api
 If the user specified an issue key (e.g. `MF-6`, `ORT-15`), fetch it directly:
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/issues?key=ISSUE-KEY" | python3 -m json.tool
+mf issue show ISSUE-KEY
 ```
 
-Otherwise, list open issues for the relevant project:
+Otherwise, list open issues for the relevant project (`mf ctx` lists the projects):
 
 ```bash
-curl -s "https://memory-flow.local.playquota.com/api/v1/projects/PROJECT_ID/issues?status=todo&page_size=10" | python3 -m json.tool
+mf issues PROJECT_KEY
 ```
 
-Pick the highest-priority issue (P0 > P1 > P2).
+Pick the highest-priority issue (P0 > P1 > P2). Check `mf issue show KEY --deps`
+before starting: a `critical` dependency that isn't `done` blocks the work.
 
 ---
 
 ## Step 2 — Transition to In Progress
 
 ```bash
-curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID/status" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}'
+mf issue start ISSUE-KEY
 ```
 
 ---
@@ -63,20 +66,12 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID
 
 If you encounter a blocker, broken API, missing documentation, or design flaw:
 
-- **Bug** (something broken): `POST .../issues` with `"type": "bug"`
-- **Requirement** (something missing): `POST .../issues` with `"type": "requirement"`
-
 ```bash
-curl -s -X POST "https://memory-flow.local.playquota.com/api/v1/projects/PROJECT_ID/issues" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "bug",
-    "title": "Short title",
-    "description": "What is broken and where",
-    "priority": "P1"
-  }'
+mf issue create PROJECT_KEY --type bug --title "Short title" \
+  --priority P1 --desc "What is broken and where"
 ```
 
+Use `--type bug` for something broken, `--type requirement` for something missing.
 Only file if it's a real blocker or design issue — not a style nit.
 
 ---
@@ -102,27 +97,17 @@ Do **not** use `git add .` blindly — stage only the relevant files.
 
 ---
 
-## Step 5 — Update Issue and Mark Done
+## Step 5 — Record the Commit and Mark Done
 
-After committing, get the commit SHA and update the issue:
+One command records the commit URL and closes the issue:
 
 ```bash
-# Get commit SHA
-SHA=$(git rev-parse HEAD)
-
-# Get remote URL (strip .git suffix)
-REMOTE=$(git remote get-url origin | sed 's/\.git$//')
-
-# Update git_url on the issue (REQUIRED before marking done)
-curl -s -X PUT "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID" \
-  -H "Content-Type: application/json" \
-  -d "{\"git_url\": \"$REMOTE/commit/$SHA\"}"
-
-# Mark as done
-curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID/status" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "done"}'
+mf issue done ISSUE-KEY --git HEAD
 ```
+
+`mf` builds the commit URL from the project's `git_url` (falling back to the repo's
+origin remote), walks any intermediate status hops, and **refuses to close an issue
+with no `git_url`** — do not work around that with `--force`.
 
 ---
 
@@ -151,16 +136,14 @@ The cicd-manager skill will:
 
 ## Rules
 
-1. **Always fill `git_url`** before marking an issue as `done` — never skip this.
+1. **Always record `git_url`** before marking an issue as `done` — `mf issue done --git HEAD` does both.
 2. **Commit format** `[ISSUE-KEY] ...` is mandatory.
 3. **One issue at a time** — complete and mark done before moving to the next.
 4. **No git add .** — stage only changed files relevant to the issue.
-5. **Suspend, don't fail silently** — if you cannot complete the issue, transition it to `suspended` and explain why.
+5. **Suspend, don't fail silently** — if you cannot complete the issue, suspend it and explain why:
 
 ```bash
-curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID/status" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "suspended"}'
+mf issue status ISSUE-KEY suspended
 ```
 
 ---
@@ -168,11 +151,14 @@ curl -s -X PATCH "https://memory-flow.local.playquota.com/api/v1/issues/ISSUE_ID
 ## Status Transition Reference
 
 ```
-todo → in_progress → done → closed
-todo → in_progress → suspended → todo
+todo        → in_progress, suspended, rejected
+in_progress → review, done, suspended, todo
+review      → testing, in_progress
+testing     → done, in_progress
+done        → closed, in_progress
+suspended   → todo
+rejected    → todo
 ```
 
-All transitions via:
-```
-PATCH /api/v1/issues/{id}/status   {"status": "TARGET"}
-```
+`mf issue status KEY TARGET` walks intermediate hops automatically (closing a
+`todo` issue performs todo → in_progress → done).
