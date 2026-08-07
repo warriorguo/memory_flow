@@ -12,16 +12,6 @@ import (
 var validIssueTypes = map[string]bool{"requirement": true, "bug": true}
 var validPriorities = map[string]bool{"P0": true, "P1": true, "P2": true}
 
-var allowedTransitions = map[string][]string{
-	"todo":        {"in_progress", "suspended", "rejected"},
-	"in_progress": {"review", "done", "suspended", "todo"},
-	"review":      {"testing", "in_progress"},
-	"testing":     {"done", "in_progress"},
-	"done":        {"closed", "in_progress"},
-	"suspended":   {"todo"},
-	"rejected":    {"todo"},
-}
-
 type IssueService struct {
 	issueRepo   repository.IssueRepository
 	projectRepo repository.ProjectRepository
@@ -264,19 +254,10 @@ func (s *IssueService) TransitionStatus(ctx context.Context, id uuid.UUID, newSt
 		return nil, fmt.Errorf("issue not found")
 	}
 
-	allowed, ok := allowedTransitions[existing.Status]
-	if !ok {
+	if _, ok := model.AllowedTransitions(existing.Status); !ok {
 		return nil, fmt.Errorf("cannot transition from status: %s", existing.Status)
 	}
-
-	valid := false
-	for _, s := range allowed {
-		if s == newStatus {
-			valid = true
-			break
-		}
-	}
-	if !valid {
+	if !model.CanTransition(existing.Status, newStatus) {
 		return nil, fmt.Errorf("cannot transition from %s to %s", existing.Status, newStatus)
 	}
 

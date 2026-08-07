@@ -69,16 +69,44 @@ psql -h <host> -U <user> -d memory_flow -c \
   "INSERT INTO users (username, password_hash, display_name, role) VALUES ('admin', '<hash>', '管理员', 'admin');"
 ```
 
+## 命令行客户端 `mf`
+
+`mf` 是平台的命令行客户端，供人和 AI Agent 使用。它自动选择实例（`--url` /
+`$MEMORY_FLOW_URL` → 远程服务器 → 本地 standalone `~/.memory_flow/endpoint` →
+`http://127.0.0.1:8080`），因此无需手写 curl 和 URL。
+
+```bash
+make install-mf                      # 安装到 /usr/local/bin
+make install-mf PREFIX=/opt/homebrew # 或安装到其它 PATH 目录（无需 sudo）
+
+mf ctx                               # 当前实例 + 所有项目
+mf issues MF                         # 未关闭的工作项
+mf issue show ORT-100
+mf issue attach-git ORT-100 5253083  # 由项目 git_url 生成 commit 链接
+mf issue done ORT-100                # 校验 git_url，并自动走完状态流转
+```
+
+常用命令：`mf projects` / `mf project show|create|update|progress`、
+`mf issue list|show|create|update|start|status|done|attach-git|history|dep|tag`、
+`mf memory add|search|show`、`mf tags`。全局参数：`--json`（原始响应）、
+`--url`、`--refresh`、`--timeout`。详见 `mf help [issue|project|memory|tag|workflow]`。
+
+其中 `mf issue done` 会强制执行收尾规范：`git_url` 为空时拒绝关闭；
+状态图不允许的单步跳转（如 `todo → done`）会自动补齐中间状态。
+
 ## 项目结构
 
 ```
 memory_flow/
 ├── backend/
 │   ├── cmd/server/          # 入口
+│   ├── cmd/standalone/      # 单二进制（内嵌 SQLite + 前端）
+│   ├── cmd/mf/              # 命令行客户端
 │   ├── internal/
 │   │   ├── config/          # 配置加载
 │   │   ├── database/        # 数据库连接
 │   │   ├── handler/         # HTTP 处理器
+│   │   ├── mfcli/           # mf 命令行实现
 │   │   ├── middleware/      # 中间件（JWT、CORS、日志）
 │   │   ├── model/           # 数据模型
 │   │   ├── repository/      # 数据访问层
