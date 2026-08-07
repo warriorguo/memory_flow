@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mf:*)",
+      "Skill(memory-flow-pm)"
+    ]
+  }
+}
