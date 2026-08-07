@@ -107,7 +107,9 @@ func cmdProjectShow(e *env, args []string) error {
 	e.printf("  cicd_url      %s\n", dash(p.CICDURL))
 	e.printf("  doc_url       %s\n", dash(p.DocURL))
 	e.printf("  owner         %s\n", dash(p.OwnerID))
-	e.printf("  next issue    %s-%d\n", p.Key, p.NextIssueNumber)
+	// next_issue_number holds the last number handed out — the repository
+	// increments it and uses the result — so the next key is one past it.
+	e.printf("  next issue    %s-%d\n", p.Key, p.NextIssueNumber+1)
 	if v := deref(p.Summary); v != "" {
 		e.printf("\nSummary:\n%s\n", v)
 	}
@@ -186,7 +188,7 @@ func cmdProjectUpdate(e *env, args []string) error {
 	docURL := fs.String("doc-url", "", "documentation URL")
 	owner := fs.String("owner", "", "owner id")
 	status := fs.String("status", "", "active/paused/archived")
-	nextIssue := fs.Int("next-issue-number", 0, "bump the issue-key counter forward")
+	nextIssue := fs.Int("next-issue-number", 0, "set the last-used issue number (the next issue becomes N+1); may only increase")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
