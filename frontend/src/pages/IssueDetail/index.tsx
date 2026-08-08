@@ -7,6 +7,7 @@ import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory } from '.
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import Markdown from '../../components/Markdown';
+import AssetPanel from '../../components/AssetPanel';
 import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
@@ -100,6 +101,8 @@ const IssueDetail: React.FC = () => {
           </div>
         )}
       </Card>
+
+      <AssetPanel issueKey={id!} />
 
       <Card title="操作历史" style={{ marginTop: 16 }}>
         <Timeline
