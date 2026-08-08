@@ -6,15 +6,17 @@ description: >
   (2) the user wants to create/file a bug or requirement;
   (3) the user wants to record or retrieve a memory (recall/write);
   (4) the user asks about project progress or status;
-  (5) the user wants to create or manage a project.
+  (5) the user wants to create or manage a project;
+  (6) the user wants to attach, fetch, replace, or delete a file (asset) on an issue.
   Trigger on phrases like "file a bug", "create a requirement", "what are the open issues",
   "record this", "recall memory", "what's the project status", "list bugs", "check progress",
-  "create project", "update issue", "mark as done".
+  "create project", "update issue", "mark as done", "attach a file", "upload the screenshot",
+  "get the assets for this issue", "replace the reference art".
 compatibility: Uses the `mf` CLI, which reaches the remote Memory Flow API or falls back to the local standalone app
 allowed-tools: Bash(mf:*)
 metadata:
   author: warriorguo
-  version: "5.0"
+  version: "6.0"
   service-url: "https://memory-flow.local.playquota.com"
   local-fallback-url: "http://127.0.0.1:8080"
 ---
@@ -283,6 +285,101 @@ mf memory rm <MEMORY_ID>
 
 ---
 
+## Assets (files attached to an issue)
+
+Every issue can carry files — reference art, a screen recording, a crash log,
+sample data, a design doc. They are addressed by **filename, unique per issue**,
+and the description can point at one with `asset:<filename>`.
+
+```bash
+mf asset add OZX-12 ~/art/enemy_ref.png ~/audio/hit.wav   # one or many files
+mf asset add OZX-12 --file - --name report.md             # content from stdin
+mf asset list OZX-12
+mf asset get OZX-12 enemy_ref.png -o ./enemy_ref.png      # '-o -' writes stdout
+mf asset get OZX-12 --all -o ./assets                     # every file at once
+mf asset replace OZX-12 enemy_ref.png ~/art/enemy_v2.png
+mf asset rm OZX-12 old.png --yes
+```
+
+`mf issue show <KEY>` lists the issue's assets, so you learn the material exists
+without a second command.
+
+**Uploading over an existing filename fails** with a conflict rather than
+overwriting — pass `--overwrite`, or use `replace`, when replacing is what you
+mean. Replacing keeps the name, so `asset:` references in the description stay
+valid. Single files are capped (32MB by default); the server's error says so.
+
+### Asset or memory?
+
+- **asset** — a *file* that is an input to, or an output of, the work: images,
+  audio, video, screen recordings, logs, sample saves, design docs, generated
+  atlases.
+- **memory** — reusable *knowledge*: a design decision, a root cause, a
+  constraint. Text that a future reader needs to understand the project, not a
+  file they need to open.
+
+A crash log is an asset. The conclusion you drew from reading it is a memory.
+
+### Referencing assets from a description
+
+```
+参考图 ![参考](asset:enemy_ref.png)，音效见 asset:hit.wav
+```
+
+References resolve within the issue that owns the description. The web UI
+renders images inline and streams video/audio; `mf issue show` marks each
+reference `(asset)` or `⚠ missing asset`. Deleting a referenced file is allowed
+but warns.
+
+### Usage scenarios (the OZX closed loop)
+
+The point of assets is that one issue can carry a task from proposal through
+material handoff to landed implementation.
+
+1. **Filing a requirement with material** — a designer asks for a new enemy.
+   Attach the reference art, the sound effect, and the animation table to the
+   issue, and reference them in the description:
+
+   ```bash
+   mf issue create OZX --type requirement --title "新增敌人：爆裂虫" --desc-file - <<'EOF'
+   外观参考 asset:enemy_ref.png，受击音效 asset:hit.wav。
+   动画帧表见 asset:frames.csv。
+   EOF
+   mf asset add OZX-42 ~/art/enemy_ref.png ~/audio/hit.wav ~/data/frames.csv
+   ```
+
+2. **Picking the issue up** — pull the material into the working directory
+   *before* touching code, so the implementation works from the real files:
+
+   ```bash
+   mf asset get OZX-42 --all -o ./.work/OZX-42
+   ```
+
+3. **Handing back the result** — attach the proof of work to the same issue, so
+   review does not require rebuilding anything:
+
+   ```bash
+   mf asset add OZX-42 ./screenshots/in_game.png ./recordings/attack.mp4
+   ```
+
+4. **The source file is revised** — art redraws the reference. Replace it under
+   the same name and every existing reference keeps working:
+
+   ```bash
+   mf asset replace OZX-42 enemy_ref.png ~/art/enemy_v2.png
+   ```
+
+5. **Reporting a bug with evidence** — attach the repro recording, the crash
+   log, and the save file that triggers it:
+
+   ```bash
+   mf issue create OZX --type bug --title "第三关 Boss 卡墙" --priority P1 \
+     --desc "复现录屏 asset:repro.mp4，日志 asset:crash.log，存档 asset:save.dat"
+   mf asset add OZX-43 ./repro.mp4 ./crash.log ./save.dat
+   ```
+
+---
+
 ## Tags
 
 ```bash
@@ -313,9 +410,11 @@ mf issue untag MF-1 frontend
 | Issue history | `mf issue history <KEY>` |
 | Dependencies | `mf issue dep add\|list\|tree\|rm …` |
 | Effective priority | `mf issue priority <KEY>` |
+| Assets | `mf asset add\|list\|get\|replace\|rm <ISSUE_KEY> …` |
+| Pull every asset | `mf asset get <KEY> --all -o <DIR>` |
 | Memories | `mf memory add\|search\|show\|update\|rm …` |
 | Tags | `mf tags` · `mf tag create` · `mf issue tag\|untag` |
-| Help | `mf help [issue\|project\|memory\|tag\|workflow]` |
+| Help | `mf help [issue\|project\|asset\|memory\|tag\|workflow]` |
 
 Every command accepts an issue key (`MF-1`) or project key (`MF`) wherever an
 identifier is expected; UUIDs also work.
@@ -326,11 +425,12 @@ identifier is expected; UUIDs also work.
 
 1. **Infer type from context**: something broken = `bug`; something new = `requirement`
 2. **Choose memory type wisely**: `recall` for reusable context, `write` for output artifacts
-3. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g. MF-1, MF-2)
-4. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected; add `--all` when the user asks for everything
-5. **Summarize progress in prose**, don't dump the table
-6. **Analyze before filing**: decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
-7. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
-8. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
-9. **No auth needed** — all endpoints are public
-10. **If `mf` is missing**, build and install it from the memory_flow repo: `make install-mf PREFIX=/opt/homebrew`
+3. **Files go in assets, knowledge goes in memories** — attach the crash log as an asset, record what it revealed as a memory
+4. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g. MF-1, MF-2)
+5. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected; add `--all` when the user asks for everything
+6. **Summarize progress in prose**, don't dump the table
+7. **Analyze before filing**: decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
+8. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
+9. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
+10. **No auth needed** — all endpoints are public
+11. **If `mf` is missing**, build and install it from the memory_flow repo: `make install-mf PREFIX=/opt/homebrew`

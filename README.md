@@ -8,6 +8,7 @@
 - **需求 / Bug 管理** — 统一工作项模型，支持优先级（P0/P1/P2）、状态流转、标签、关联 Git/PR
 - **进度管理** — 看板视图（拖拽）、状态/优先级统计图表、趋势分析
 - **Memory 管理** — Recall / Write 两类记录，支持关联项目和工作项，为 AI/Agent 协作提供数据基础
+- **附件（Asset）管理** — 每个工作项可挂载图片、音视频、日志等任意文件，按文件名寻址；描述中用 `asset:<文件名>` 直接引用，前端内联预览，`mf asset` 供 Agent 取用与回传
 
 ## 技术栈
 
@@ -133,6 +134,8 @@ memory_flow/
 | 工作项 | `GET/POST /projects/:id/issues` | 工作项列表 / 创建 |
 | 工作项 | `GET/PUT /issues/:id` | 详情 / 更新 |
 | 工作项 | `PATCH /issues/:id/status` | 状态流转 |
+| 附件 | `GET/POST /issues/:id/assets` | 附件列表 / 上传 |
+| 附件 | `GET/PUT/DELETE /issues/:id/assets/:filename` | 访问 / 替换 / 删除 |
 | 进度 | `GET /projects/:id/progress/summary` | 统计概览 |
 | 进度 | `GET /projects/:id/progress/trend` | 趋势数据 |
 | 标签 | `GET/POST /tags` | 标签管理 |

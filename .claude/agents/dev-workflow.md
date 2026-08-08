@@ -3,8 +3,9 @@ name: dev-workflow
 description: >
   Autonomous development agent that integrates Memory Flow project management with CI/CD.
   Use when: (1) pulling and working on open issues from Memory Flow; (2) implementing a
-  requirement or fixing a bug end-to-end; (3) committing code and marking issues as done;
-  (4) triggering CI/CD builds after completing work.
+  requirement or fixing a bug end-to-end; (3) fetching an issue's assets before coding and
+  attaching the results afterwards; (4) committing code and marking issues as done;
+  (5) triggering CI/CD builds after completing work.
   Trigger on: "handle the next issue", "work on [ISSUE-KEY]", "resolve the issue",
   "pick up a task", "process open issues", "implement requirement", "fix the bug".
 ---
@@ -54,7 +55,27 @@ mf issue start ISSUE-KEY
 
 ---
 
-## Step 3 — Implement the Changes
+## Step 3 — Pull the Issue's Assets
+
+Issues carry their working material as attachments — reference art, audio,
+animation tables, repro recordings, crash logs. `mf issue show` lists them.
+Pull them into a working directory **before** writing code, so the
+implementation is built against the real files rather than a guess:
+
+```bash
+mf asset get ISSUE-KEY --all -o ./.work/ISSUE-KEY
+```
+
+The description references them by filename (`asset:enemy_ref.png`); those names
+match the files you just downloaded. If an asset the description mentions does
+not exist, say so instead of inventing a substitute — `mf issue show` marks such
+a reference `⚠ missing asset`.
+
+Skip this step only when the issue has no assets.
+
+---
+
+## Step 4 — Implement the Changes
 
 1. Read the issue description carefully.
 2. Explore the codebase to understand the relevant files (use Glob, Grep, Read).
@@ -76,7 +97,30 @@ Only file if it's a real blocker or design issue — not a style nit.
 
 ---
 
-## Step 4 — Commit
+## Step 5 — Attach the Result
+
+Before closing, hand back what the work produced, so review does not require
+rebuilding anything: screenshots, a screen recording, a generated atlas, a
+before/after log.
+
+```bash
+mf asset add ISSUE-KEY ./screenshots/result.png ./recordings/demo.mp4
+```
+
+Uploading over an existing filename fails rather than overwriting. When a file
+is genuinely a new revision of an existing one, replace it under the same name
+so the description's `asset:` reference stays valid:
+
+```bash
+mf asset replace ISSUE-KEY enemy_ref.png ~/art/enemy_v2.png
+```
+
+Attach files; record conclusions as memories (`mf memory add`). A crash log is
+an asset — what you learned from it is a memory.
+
+---
+
+## Step 6 — Commit
 
 Commit format is **required**:
 
@@ -97,7 +141,7 @@ Do **not** use `git add .` blindly — stage only the relevant files.
 
 ---
 
-## Step 5 — Record the Commit and Mark Done
+## Step 7 — Record the Commit and Mark Done
 
 One command records the commit URL and closes the issue:
 
@@ -111,7 +155,7 @@ with no `git_url`** — do not work around that with `--force`.
 
 ---
 
-## Step 6 — CI/CD (optional, if user requests it)
+## Step 8 — CI/CD (optional, if user requests it)
 
 Only trigger if the user explicitly asks for a build/deploy.
 
@@ -140,7 +184,9 @@ The cicd-manager skill will:
 2. **Commit format** `[ISSUE-KEY] ...` is mandatory.
 3. **One issue at a time** — complete and mark done before moving to the next.
 4. **No git add .** — stage only changed files relevant to the issue.
-5. **Suspend, don't fail silently** — if you cannot complete the issue, suspend it and explain why:
+5. **Never commit downloaded assets** — `./.work/<ISSUE-KEY>` is scratch space, not part of the change.
+6. **Hand back the evidence** — attach the screenshot or recording that shows the work landed.
+7. **Suspend, don't fail silently** — if you cannot complete the issue, suspend it and explain why:
 
 ```bash
 mf issue status ISSUE-KEY suspended
