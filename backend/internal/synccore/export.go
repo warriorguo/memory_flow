@@ -131,6 +131,26 @@ func exportDependencies(ctx context.Context, db database.DB) ([]model.IssueDepen
 	return out, rows.Err()
 }
 
+// exportAssets reads asset metadata without the content column — the whole
+// point of transferring bytes out of band.
+func exportAssets(ctx context.Context, db database.DB) ([]model.IssueAsset, error) {
+	rows, err := db.Query(ctx, `SELECT id, issue_id, filename, mime_type, size_bytes, checksum, created_at, updated_at FROM issue_assets`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.IssueAsset
+	for rows.Next() {
+		var a model.IssueAsset
+		if err := rows.Scan(&a.ID, &a.IssueID, &a.Filename, &a.MimeType, &a.SizeBytes,
+			&a.Checksum, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func exportUsers(ctx context.Context, db database.DB) ([]SyncUser, error) {
 	rows, err := db.Query(ctx, `SELECT id, username, password_hash, display_name, role, created_at FROM users`)
 	if err != nil {

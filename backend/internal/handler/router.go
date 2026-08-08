@@ -79,6 +79,9 @@ func NewRouter(
 		// Data sync (export full dataset / merge an incoming snapshot)
 		r.Get("/sync/export", syncHandler.Export)
 		r.Post("/sync/import", syncHandler.Import)
+		// Asset bytes move outside the snapshot, keyed by asset id.
+		r.Get("/sync/assets/{id}", syncHandler.AssetContent)
+		r.Put("/sync/assets/{id}", syncHandler.PutAssetContent)
 	})
 
 	return r

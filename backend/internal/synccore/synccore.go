@@ -10,6 +10,8 @@ package synccore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -39,6 +41,10 @@ type TagRel struct {
 }
 
 // Snapshot is the complete, portable dataset.
+//
+// Assets carry metadata only. Their bytes move separately (see
+// [PendingAssetContent]) because base64-encoding megabytes of video into this
+// JSON document would make every sync pay for every attachment, every time.
 type Snapshot struct {
 	Version           int                     `json:"version"`
 	Projects          []model.Project         `json:"projects"`
@@ -50,6 +56,7 @@ type Snapshot struct {
 	MemoryTagRel      []TagRel                `json:"memory_tag_rel"`
 	IssueDependencies []model.IssueDependency `json:"issue_dependencies"`
 	Users             []SyncUser              `json:"users"`
+	Assets            []model.IssueAsset      `json:"assets"`
 }
 
 // ImportResult summarizes a merge.
@@ -57,6 +64,11 @@ type ImportResult struct {
 	Applied int      `json:"applied"`
 	Skipped int      `json:"skipped"`
 	Errors  []string `json:"errors,omitempty"`
+	// AssetsPending lists assets whose metadata landed here but whose bytes this
+	// instance does not hold yet — the peer should send them.
+	AssetsPending []uuid.UUID `json:"assets_pending,omitempty"`
+	// AssetsTransferred counts blobs actually moved after the metadata merge.
+	AssetsTransferred int `json:"assets_transferred,omitempty"`
 }
 
 // Export reads every table into a Snapshot.
@@ -89,6 +101,9 @@ func Export(ctx context.Context, db database.DB) (*Snapshot, error) {
 		return nil, err
 	}
 	if s.Users, err = exportUsers(ctx, db); err != nil {
+		return nil, err
+	}
+	if s.Assets, err = exportAssets(ctx, db); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -138,7 +153,85 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 		apply(ctx, db, res, userInsert, u.ID,
 			u.ID, u.Username, u.PasswordHash, u.DisplayName, u.Role, ts(u.CreatedAt))
 	}
+	// Assets last: their rows reference issues, and the upsert drops the stored
+	// bytes whenever the incoming checksum differs, so the merge leaves behind an
+	// explicit "needs content" marker rather than metadata describing stale bytes.
+	for _, a := range s.Assets {
+		apply(ctx, db, res, assetUpsert, a.ID,
+			a.ID, a.IssueID, a.Filename, a.MimeType, a.SizeBytes, a.Checksum,
+			ts(a.CreatedAt), ts(a.UpdatedAt))
+	}
+
+	pending, err := PendingAssetContent(ctx, db)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Sprintf("list pending asset content: %v", err))
+	}
+	res.AssetsPending = pending
+
 	return res, nil
+}
+
+// PendingAssetContent lists assets whose row exists but whose bytes do not —
+// either freshly imported metadata, or an earlier transfer that did not finish.
+// This is the work list for the blob half of a sync.
+func PendingAssetContent(ctx context.Context, db database.DB) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `SELECT id FROM issue_assets WHERE content IS NULL ORDER BY size_bytes`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// AssetContent returns an asset's bytes and its recorded checksum. Content is
+// nil when this instance has the metadata but not the bytes.
+func AssetContent(ctx context.Context, db database.DB, id uuid.UUID) ([]byte, string, error) {
+	var content []byte
+	var checksum string
+	err := db.QueryRow(ctx, `SELECT content, checksum FROM issue_assets WHERE id = $1`, id).Scan(&content, &checksum)
+	if err != nil {
+		if err == database.ErrNoRows {
+			return nil, "", nil
+		}
+		return nil, "", err
+	}
+	return content, checksum, nil
+}
+
+// PutAssetContent stores transferred bytes, refusing content that does not
+// match the checksum the metadata row already agreed on — a mismatch means the
+// two sides disagree about what this asset is, and writing it would make the
+// row lie about its own contents.
+func PutAssetContent(ctx context.Context, db database.DB, id uuid.UUID, content []byte) error {
+	var want string
+	err := db.QueryRow(ctx, `SELECT checksum FROM issue_assets WHERE id = $1`, id).Scan(&want)
+	if err != nil {
+		if err == database.ErrNoRows {
+			return fmt.Errorf("asset %s is not known here", id)
+		}
+		return err
+	}
+	if got := Checksum(content); got != want {
+		return fmt.Errorf("asset %s content checksum %s does not match the recorded %s", id, got, want)
+	}
+	_, err = db.Exec(ctx, `UPDATE issue_assets SET content = $1 WHERE id = $2`, content, id)
+	return err
+}
+
+// Checksum is the digest recorded on every asset; sync compares it to decide
+// which blobs actually need moving.
+func Checksum(content []byte) string {
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
 }
 
 // timeBinder returns a function that converts a time.Time into the value to
@@ -202,6 +295,18 @@ ON CONFLICT(id) DO UPDATE SET
   source_object_type=excluded.source_object_type, source_object_id=excluded.source_object_id,
   creator_id=excluded.creator_id, updated_at=excluded.updated_at
 WHERE excluded.updated_at > memories.updated_at`
+
+// assetUpsert merges asset metadata. The content column is deliberately absent
+// from the insert and cleared on any checksum change: bytes travel separately,
+// and a row must never describe content it no longer holds.
+const assetUpsert = `
+INSERT INTO issue_assets (id, issue_id, filename, mime_type, size_bytes, checksum, created_at, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+ON CONFLICT(id) DO UPDATE SET
+  issue_id=excluded.issue_id, filename=excluded.filename, mime_type=excluded.mime_type,
+  size_bytes=excluded.size_bytes, checksum=excluded.checksum, updated_at=excluded.updated_at,
+  content=CASE WHEN excluded.checksum = issue_assets.checksum THEN issue_assets.content ELSE NULL END
+WHERE excluded.updated_at > issue_assets.updated_at`
 
 const tagInsert = `INSERT INTO tags (id, name, color, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`
 const historyInsert = `INSERT INTO issue_history (id, issue_id, field_name, old_value, new_value, operator_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`

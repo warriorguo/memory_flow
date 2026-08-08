@@ -3,8 +3,11 @@ package handler
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/warriorguo/memory_flow/backend/internal/database"
 	"github.com/warriorguo/memory_flow/backend/internal/synccore"
 )
@@ -55,6 +58,63 @@ func (h *SyncHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// AssetContent serves an asset's bytes to a syncing peer, keyed by asset id
+// rather than issue+filename so the transfer does not depend on either side's
+// naming being current.
+func (h *SyncHandler) AssetContent(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid asset id")
+		return
+	}
+
+	content, checksum, err := synccore.AssetContent(r.Context(), h.db, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if content == nil {
+		// Either the asset is unknown here, or this instance is itself waiting
+		// for the bytes. Neither is something the peer can fix by retrying now.
+		writeError(w, http.StatusNotFound, "asset content is not available on this instance")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("ETag", `"`+checksum+`"`)
+	w.WriteHeader(http.StatusOK)
+	w.Write(content)
+}
+
+// PutAssetContent accepts bytes for an asset whose metadata already arrived.
+// The checksum must match what the metadata claims — see
+// [synccore.PutAssetContent].
+func (h *SyncHandler) PutAssetContent(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid asset id")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxSnapshotBytes)
+	content, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "asset content too large")
+		return
+	}
+	if err := synccore.PutAssetContent(r.Context(), h.db, id, content); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeData(w, http.StatusOK, map[string]string{"status": "stored", "id": id.String()})
 }
 
 // Import merges a posted snapshot into this instance (last-writer-wins).

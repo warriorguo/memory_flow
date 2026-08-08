@@ -198,6 +198,14 @@ func (h *AssetHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "asset not found")
 		return
 	}
+	// Sync merges metadata before it moves bytes, so an instance can legitimately
+	// know about an asset it cannot yet serve. Say so instead of handing back an
+	// empty file that looks like a corrupt download.
+	if content == nil && asset.SizeBytes > 0 {
+		writeError(w, http.StatusNotFound,
+			"asset content has not synced to this instance yet — run a sync and retry")
+		return
+	}
 
 	w.Header().Set("Content-Type", asset.MimeType)
 	w.Header().Set("ETag", `"`+asset.Checksum+`"`)
