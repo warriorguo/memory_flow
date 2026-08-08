@@ -18,11 +18,12 @@ import (
 
 type AssetHandler struct {
 	svc      *service.AssetService
+	issueSvc *service.IssueService
 	resolver *IDResolver
 }
 
-func NewAssetHandler(svc *service.AssetService, resolver *IDResolver) *AssetHandler {
-	return &AssetHandler{svc: svc, resolver: resolver}
+func NewAssetHandler(svc *service.AssetService, issueSvc *service.IssueService, resolver *IDResolver) *AssetHandler {
+	return &AssetHandler{svc: svc, issueSvc: issueSvc, resolver: resolver}
 }
 
 // resolveIssue maps the {id} path parameter — an issue key like OZX-12 or a
@@ -263,9 +264,33 @@ func (h *AssetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	filename := pathFilename(r)
 
+	// Look before deleting: once the row is gone the description still says
+	// asset:<name>, and the reader deserves to be told rather than discovering a
+	// broken reference later. This warns, it does not block — the caller asked.
+	stillReferenced := h.descriptionReferences(r, issueID, filename)
+
 	if err := h.svc.Delete(r.Context(), issueID, filename); err != nil {
 		writeAssetError(w, err)
 		return
 	}
-	writeData(w, http.StatusOK, map[string]string{"status": "deleted", "filename": filename})
+
+	result := map[string]string{"status": "deleted", "filename": filename}
+	if stillReferenced {
+		result["warning"] = fmt.Sprintf("the issue description still references asset:%s", filename)
+	}
+	writeData(w, http.StatusOK, result)
+}
+
+// descriptionReferences reports whether the issue's description points at the
+// filename. A lookup failure answers false: the warning is a courtesy and must
+// never be the reason a delete fails.
+func (h *AssetHandler) descriptionReferences(r *http.Request, issueID uuid.UUID, filename string) bool {
+	if h.issueSvc == nil {
+		return false
+	}
+	issue, err := h.issueSvc.GetByID(r.Context(), issueID)
+	if err != nil || issue == nil || issue.Description == nil {
+		return false
+	}
+	return service.ReferencedIn(*issue.Description, filename)
 }

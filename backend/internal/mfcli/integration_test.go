@@ -67,7 +67,7 @@ func newMFTest(t *testing.T) *mfTest {
 		handler.NewTagHandler(tagRepo, resolver),
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, ""),
-		handler.NewAssetHandler(assetSvc, resolver),
+		handler.NewAssetHandler(assetSvc, issueSvc, resolver),
 	)
 
 	srv := httptest.NewServer(router)
@@ -708,6 +708,24 @@ func TestIntegrationAssetsAppearInIssueShow(t *testing.T) {
 	if first, _ := assets[0].(map[string]any); first["filename"] != "enemy_ref.png" {
 		t.Errorf("assets[0] = %v", assets[0])
 	}
+}
+
+// A description can point at the issue's own files by name. `mf issue show`
+// marks each reference so the reader can tell a live one from a dangling one.
+func TestIntegrationAssetReferencesInDescription(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "requirement", "--title", "New enemy",
+		"--desc", "参考图 asset:enemy_ref.png，音效 asset:hit.wav（尚未上传）")
+	m.run("asset", "add", "OZX-1", writeTempFile(t, "enemy_ref.png", []byte("pixels")))
+
+	out := m.run("issue", "show", "OZX-1")
+	m.contains(out, "asset:enemy_ref.png  (asset)", "asset:hit.wav  ⚠ missing asset")
+
+	// Deleting a referenced file is allowed, but the dangling reference is
+	// called out rather than left to be discovered later.
+	m.contains(m.run("asset", "rm", "OZX-1", "enemy_ref.png", "--yes"),
+		"deleted enemy_ref.png", "still references asset:enemy_ref.png")
 }
 
 func TestIntegrationAssetErrors(t *testing.T) {

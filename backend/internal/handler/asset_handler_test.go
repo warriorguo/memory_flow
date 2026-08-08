@@ -118,6 +118,10 @@ func newAssetTest(t *testing.T, maxBytes int64) *assetTest {
 			}
 			return nil, nil
 		},
+		// Delete reads the description to warn about references it leaves behind.
+		GetByIDFn: func(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
+			return &model.Issue{ID: issueID, IssueKey: "OZX-7"}, nil
+		},
 	}
 	projectRepo := &mocks.MockProjectRepo{}
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, &mocks.MockIssueHistoryRepo{})
@@ -125,7 +129,7 @@ func newAssetTest(t *testing.T, maxBytes int64) *assetTest {
 	resolver := NewIDResolver(projectSvc, issueSvc)
 
 	repo := newFakeAssetRepo()
-	h := NewAssetHandler(service.NewAssetService(repo, maxBytes), resolver)
+	h := NewAssetHandler(service.NewAssetService(repo, maxBytes), issueSvc, resolver)
 
 	r := chi.NewRouter()
 	r.Get("/issues/{id}/assets", h.List)
@@ -373,6 +377,49 @@ func TestAssetMimeInferredFromExtension(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &created)
 	if !strings.Contains(created.Data.MimeType, "wav") {
 		t.Errorf("mime = %q, want something wav-ish", created.Data.MimeType)
+	}
+}
+
+// Deleting an asset the description still points at must warn — the reference
+// does not disappear with the file.
+func TestAssetDeleteWarnsWhenStillReferenced(t *testing.T) {
+	description := "参考图见 asset:enemy_ref.png，日志 asset:crash.log"
+	issueID := uuid.New()
+	issueRepo := &mocks.MockIssueRepo{
+		GetByKeyFn: func(ctx context.Context, key string) (*model.Issue, error) {
+			return &model.Issue{ID: issueID, IssueKey: key, Description: &description}, nil
+		},
+		GetByIDFn: func(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
+			return &model.Issue{ID: issueID, IssueKey: "OZX-7", Description: &description}, nil
+		},
+	}
+	projectRepo := &mocks.MockProjectRepo{}
+	issueSvc := service.NewIssueService(issueRepo, projectRepo, &mocks.MockIssueHistoryRepo{})
+	resolver := NewIDResolver(service.NewProjectService(projectRepo), issueSvc)
+
+	repo := newFakeAssetRepo()
+	h := NewAssetHandler(service.NewAssetService(repo, 0), issueSvc, resolver)
+	r := chi.NewRouter()
+	r.Post("/issues/{id}/assets", h.Create)
+	r.Delete("/issues/{id}/assets/{filename}", h.Delete)
+
+	a := &assetTest{t: t, router: r, repo: repo, issue: issueID}
+	base := "/issues/OZX-7/assets"
+	a.requireStatus(a.upload(base, "enemy_ref.png", "image/png", []byte("art")), http.StatusCreated)
+	a.requireStatus(a.upload(base, "unused.png", "image/png", []byte("art")), http.StatusCreated)
+
+	// Referenced: warn, but still delete.
+	w := a.do(httptest.NewRequest(http.MethodDelete, base+"/enemy_ref.png", nil))
+	a.requireStatus(w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), "still references") {
+		t.Errorf("no warning for a referenced asset: %s", w.Body.String())
+	}
+
+	// Unreferenced: no warning to give.
+	w = a.do(httptest.NewRequest(http.MethodDelete, base+"/unused.png", nil))
+	a.requireStatus(w, http.StatusOK)
+	if strings.Contains(w.Body.String(), "warning") {
+		t.Errorf("unexpected warning for an unreferenced asset: %s", w.Body.String())
 	}
 }
 

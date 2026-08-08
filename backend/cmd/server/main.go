@@ -73,7 +73,7 @@ func main() {
 	tagHandler := handler.NewTagHandler(tagRepo, resolver)
 	depHandler := handler.NewDependencyHandler(depSvc, resolver)
 	syncHandler := handler.NewSyncHandler(db, cfg.SyncToken)
-	assetHandler := handler.NewAssetHandler(assetSvc, resolver)
+	assetHandler := handler.NewAssetHandler(assetSvc, issueSvc, resolver)
 
 	// Set up router
 	router := handler.NewRouter(

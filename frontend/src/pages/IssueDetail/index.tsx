@@ -4,6 +4,7 @@ import { EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory } from '../../api/issue';
+import { listAssets } from '../../api/asset';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import Markdown from '../../components/Markdown';
@@ -23,6 +24,14 @@ const IssueDetail: React.FC = () => {
   const { data: issue, isLoading } = useQuery({
     queryKey: ['issue', id],
     queryFn: () => getIssue(id!),
+    enabled: !!id,
+  });
+
+  // Shares AssetPanel's query key, so the description and the panel read the
+  // same list and one upload refreshes both.
+  const { data: assets = [] } = useQuery({
+    queryKey: ['assets', id],
+    queryFn: () => listAssets(id!),
     enabled: !!id,
   });
 
@@ -79,7 +88,9 @@ const IssueDetail: React.FC = () => {
           <Descriptions.Item label="PR">{issue.pr_url ? <a href={issue.pr_url} target="_blank" rel="noreferrer">{issue.pr_url}</a> : '-'}</Descriptions.Item>
           <Descriptions.Item label="文档">{issue.doc_url ? <a href={issue.doc_url} target="_blank" rel="noreferrer">{issue.doc_url}</a> : '-'}</Descriptions.Item>
           <Descriptions.Item label="描述" span={2}>
-            <Markdown source={issue.description} />
+            {/* assetContext lets asset:<文件名> in the description resolve to
+                this issue's attachments and render inline. */}
+            <Markdown source={issue.description} assetContext={{ issueKey: id!, assets }} />
           </Descriptions.Item>
           <Descriptions.Item label="标签" span={2}>
             {issue.tags && issue.tags.length > 0 ? issue.tags.map((t) => <Tag key={t.id} color={t.color}>{t.name}</Tag>) : '-'}

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/warriorguo/memory_flow/backend/internal/model"
+	"github.com/warriorguo/memory_flow/backend/internal/service"
 )
 
 // assetPath builds the endpoint for an issue's assets, escaping the filename so
@@ -301,7 +302,25 @@ func cmdAssetRemove(e *env, args []string) error {
 		return nil
 	}
 	e.printf("deleted %s from %s\n", filename, issueKey)
+	// The server tells us when the description still points at the file we just
+	// removed; passing that on is the difference between a clean delete and a
+	// broken reference nobody notices.
+	if warning := deleteWarning(raw); warning != "" {
+		e.printf("warning: %s\n", warning)
+	}
 	return nil
+}
+
+func deleteWarning(raw []byte) string {
+	var env struct {
+		Data struct {
+			Warning string `json:"warning"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return ""
+	}
+	return env.Data.Warning
 }
 
 // confirm asks for a y/N on stdin. A non-interactive stdin (a pipe, a CI run)
@@ -343,6 +362,37 @@ func looksBinary(content []byte) bool {
 		}
 	}
 	return !utf8.Valid(window)
+}
+
+// annotateAssetRefs marks every asset: reference in a description so a reader
+// can match it against the Assets block below, and flags the ones that name a
+// file the issue does not have.
+func annotateAssetRefs(description string, assets []model.IssueAsset) string {
+	refs := service.AssetRefs(description)
+	if len(refs) == 0 {
+		return description
+	}
+
+	known := make(map[string]bool, len(assets))
+	for _, a := range assets {
+		known[a.Filename] = true
+	}
+
+	annotated := description
+	for _, ref := range refs {
+		resolved, ok := service.ResolveAssetRef(ref, known)
+		note := "  ⚠ missing asset"
+		if ok {
+			note = "  (asset)"
+		}
+		// Replace the reference as written, keeping any trailing punctuation the
+		// capture picked up outside the annotation.
+		suffix := strings.TrimPrefix(ref, resolved)
+		annotated = strings.ReplaceAll(annotated,
+			service.AssetRefScheme+ref,
+			service.AssetRefScheme+resolved+note+suffix)
+	}
+	return annotated
 }
 
 // printAssets renders the Assets block of `mf issue show`.

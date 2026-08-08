@@ -123,6 +123,12 @@ func cmdIssueShow(e *env, args []string) error {
 		return nil
 	}
 	if !e.asJSON {
+		// Annotate asset: references so the reader can see, inline, which ones
+		// resolve to a real attachment and which point at nothing.
+		if issue.Description != nil {
+			annotated := annotateAssetRefs(*issue.Description, assets)
+			issue.Description = &annotated
+		}
 		printIssue(e.out, issue)
 		printAssets(e, assets)
 	}
