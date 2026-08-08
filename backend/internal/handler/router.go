@@ -13,6 +13,7 @@ func NewRouter(
 	tagHandler *TagHandler,
 	dependencyHandler *DependencyHandler,
 	syncHandler *SyncHandler,
+	assetHandler *AssetHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -44,6 +45,13 @@ func NewRouter(
 		r.Delete("/issues/{id}/dependencies/{depId}", dependencyHandler.Delete)
 		r.Get("/issues/{id}/dependency-tree", dependencyHandler.GetTree)
 		r.Get("/issues/{id}/effective-priority", dependencyHandler.GetEffectivePriority)
+
+		// Issue assets
+		r.Get("/issues/{id}/assets", assetHandler.List)
+		r.Post("/issues/{id}/assets", assetHandler.Create)
+		r.Get("/issues/{id}/assets/{filename}", assetHandler.Get)
+		r.Put("/issues/{id}/assets/{filename}", assetHandler.Replace)
+		r.Delete("/issues/{id}/assets/{filename}", assetHandler.Delete)
 
 		// Issue tags
 		r.Post("/issues/{id}/tags", tagHandler.AddToIssue)

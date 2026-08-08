@@ -13,6 +13,7 @@
 //
 //	PORT               listen port (default 8080)
 //	MEMORY_FLOW_DATA   path to the SQLite file (default ~/.memory_flow/data.db)
+//	MAX_ASSET_BYTES    per-asset size cap in bytes (default 32MB)
 package main
 
 import (
@@ -24,6 +25,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -71,7 +73,8 @@ Commands:
 Env:
   PORT             listen port (default 8080)
   MEMORY_FLOW_DATA SQLite file path (default ~/.memory_flow/data.db)
-  SYNC_TOKEN       shared secret for sync (used if --token is omitted)`)
+  SYNC_TOKEN       shared secret for sync (used if --token is omitted)
+  MAX_ASSET_BYTES  per-asset size cap in bytes (default 32MB)`)
 }
 
 // openDB resolves the data path, opens SQLite, and runs migrations.
@@ -120,6 +123,21 @@ func removeEndpointFile() {
 	if p := endpointFilePath(); p != "" {
 		_ = os.Remove(p)
 	}
+}
+
+// maxAssetBytes reads the per-asset size cap, falling back to the service
+// default when unset or unparseable.
+func maxAssetBytes() int64 {
+	v := os.Getenv("MAX_ASSET_BYTES")
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		log.Printf("warning: ignoring MAX_ASSET_BYTES=%q: %v", v, err)
+		return 0
+	}
+	return n
 }
 
 func dataPath() (string, error) {
@@ -172,9 +190,11 @@ func runServe() {
 	defer removeEndpointFile()
 
 	server := &http.Server{
-		Addr:        addr,
-		Handler:     mux,
-		ReadTimeout: 15 * time.Second,
+		Addr:    addr,
+		Handler: mux,
+		// Asset uploads move tens of megabytes; a JSON-sized read timeout would
+		// cut them off.
+		ReadTimeout: 120 * time.Second,
 		// No WriteTimeout: sync export/import can stream large payloads.
 		IdleTimeout: 60 * time.Second,
 	}
@@ -206,12 +226,14 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 	memoryRepo := repository.NewMemoryRepo(db)
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
+	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
 
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, issueHistoryRepo)
 	progressSvc := service.NewProgressService(issueRepo)
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
+	assetSvc := service.NewAssetService(assetRepo, maxAssetBytes())
 
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
@@ -223,6 +245,7 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 		handler.NewTagHandler(tagRepo, resolver),
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, syncToken),
+		handler.NewAssetHandler(assetSvc, resolver),
 	)
 }
 

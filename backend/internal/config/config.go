@@ -8,6 +8,10 @@ type Config struct {
 	// SyncToken, when set, is required (X-Sync-Token header) on the data-sync
 	// endpoints. Empty leaves them open.
 	SyncToken string `envconfig:"SYNC_TOKEN"`
+	// MaxAssetBytes caps a single issue asset. Asset bytes are stored in the
+	// database, so this is the guard on how large a row can get. 0 uses
+	// service.DefaultMaxAssetBytes.
+	MaxAssetBytes int64 `envconfig:"MAX_ASSET_BYTES"`
 }
 
 func Load() (*Config, error) {

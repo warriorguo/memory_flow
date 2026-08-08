@@ -48,12 +48,14 @@ func newMFTest(t *testing.T) *mfTest {
 	memoryRepo := repository.NewMemoryRepo(db)
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
+	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
 
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, historyRepo)
 	progressSvc := service.NewProgressService(issueRepo)
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
+	assetSvc := service.NewAssetService(assetRepo, 0)
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
 	router := handler.NewRouter(
@@ -64,6 +66,7 @@ func newMFTest(t *testing.T) *mfTest {
 		handler.NewTagHandler(tagRepo, resolver),
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, ""),
+		handler.NewAssetHandler(assetSvc, resolver),
 	)
 
 	srv := httptest.NewServer(router)

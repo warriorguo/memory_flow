@@ -52,6 +52,7 @@ func main() {
 	memoryRepo := repository.NewMemoryRepo(db)
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
+	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
 
 	// Initialize services
 	projectSvc := service.NewProjectService(projectRepo)
@@ -59,6 +60,7 @@ func main() {
 	progressSvc := service.NewProgressService(issueRepo)
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
+	assetSvc := service.NewAssetService(assetRepo, cfg.MaxAssetBytes)
 
 	// Initialize ID resolver (allows UUID or key in URL paths)
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
@@ -71,6 +73,7 @@ func main() {
 	tagHandler := handler.NewTagHandler(tagRepo, resolver)
 	depHandler := handler.NewDependencyHandler(depSvc, resolver)
 	syncHandler := handler.NewSyncHandler(db, cfg.SyncToken)
+	assetHandler := handler.NewAssetHandler(assetSvc, resolver)
 
 	// Set up router
 	router := handler.NewRouter(
@@ -81,14 +84,17 @@ func main() {
 		tagHandler,
 		depHandler,
 		syncHandler,
+		assetHandler,
 	)
 
 	// Start server
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+		// Asset uploads and downloads move tens of megabytes, so the transfer
+		// timeouts are sized for a slow connection rather than a JSON round trip.
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
