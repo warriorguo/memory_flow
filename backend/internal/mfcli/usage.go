@@ -22,6 +22,7 @@ Commands:
   issues <PROJECT_KEY>    List open issues in a project
   issue …                 show | create | update | status | start | done |
                           attach-git | history | priority | tag | dep
+  asset …                 add | list | get | replace | rm  (files attached to an issue)
   memories                Search memories
   memory …                add | search | show | update | rm
   tags                    List tags
@@ -33,7 +34,7 @@ Global flags (accepted anywhere in the command line):
   --refresh               Ignore the cached endpoint and probe again
   --timeout <SECONDS>     Request timeout (default 30)
 
-Run 'mf help <topic>' for details: issue, project, memory, tag, workflow.
+Run 'mf help <topic>' for details: issue, project, asset, memory, tag, workflow.
 
 Examples:
   mf ctx
@@ -86,6 +87,33 @@ const projectUsage = `mf project — projects
                                   [--git-url URL] [--next-issue-number N] …
   mf project progress <PROJECT_KEY> [--trend <DAYS>]
   mf project archive <PROJECT_KEY>
+`
+
+const assetUsage = `mf asset — files attached to an issue
+
+  mf asset add <ISSUE_KEY> <path>… [--name NAME] [--overwrite]
+  mf asset add <ISSUE_KEY> --file - --name <NAME>      Read the content from stdin
+  mf asset list <ISSUE_KEY>
+  mf asset get <ISSUE_KEY> <FILENAME> [-o <PATH>|-]    '-' writes to stdout
+  mf asset get <ISSUE_KEY> --all -o <DIR>              Fetch every asset at once
+  mf asset replace <ISSUE_KEY> <FILENAME> <PATH>
+  mf asset rm <ISSUE_KEY> <FILENAME> [--yes]
+
+Assets are addressed by filename, unique per issue, and can be anything: images,
+video, audio, logs, sample data, design docs. Uploading over an existing name
+fails rather than overwriting — pass --overwrite, or use 'replace', when that is
+what you mean. A description can point at one with asset:<FILENAME>.
+
+Assets vs. memories: a memory holds reusable project knowledge (a decision, a
+root cause); an asset holds a file that is an input to, or an output of, the
+work.
+
+Typical loop:
+
+  mf asset add OZX-12 ~/art/enemy_ref.png ~/audio/hit.wav   # attach the material
+  mf asset get OZX-12 --all -o ./assets                     # pull it before coding
+  mf asset add OZX-12 ./screenshots/result.png              # hand back the proof
+  mf asset replace OZX-12 enemy_ref.png ~/art/enemy_v2.png  # art revised the file
 `
 
 const memoryUsage = `mf memory — recorded context
@@ -144,6 +172,8 @@ func printUsage(w io.Writer, topic string) {
 		fmt.Fprint(w, issueUsage)
 	case "project", "projects":
 		fmt.Fprint(w, projectUsage)
+	case "asset", "assets":
+		fmt.Fprint(w, assetUsage)
 	case "memory", "memories":
 		fmt.Fprint(w, memoryUsage)
 	case "tag", "tags":

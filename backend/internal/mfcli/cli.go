@@ -139,6 +139,8 @@ func dispatch(e *env, args []string) error {
 		return cmdTagList(e, args[1:])
 	case "tag":
 		return dispatchTag(e, args[1:])
+	case "asset", "assets":
+		return dispatchAsset(e, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q (run `mf help`)", args[0])
 	}
@@ -217,6 +219,26 @@ func dispatchDep(e *env, args []string) error {
 		return cmdDepTree(e, args[1:])
 	default:
 		return fmt.Errorf("unknown `mf issue dep` subcommand %q", args[0])
+	}
+}
+
+func dispatchAsset(e *env, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: mf asset <add|list|get|replace|rm> <ISSUE_KEY> …")
+	}
+	switch args[0] {
+	case "add", "upload", "put":
+		return cmdAssetAdd(e, args[1:])
+	case "list", "ls":
+		return cmdAssetList(e, args[1:])
+	case "get", "download", "cat":
+		return cmdAssetGet(e, args[1:])
+	case "replace":
+		return cmdAssetReplace(e, args[1:])
+	case "rm", "delete":
+		return cmdAssetRemove(e, args[1:])
+	default:
+		return fmt.Errorf("unknown `mf asset` subcommand %q", args[0])
 	}
 }
 

@@ -1,6 +1,7 @@
 package mfcli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
@@ -567,6 +568,163 @@ func TestIntegrationTags(t *testing.T) {
 	m.contains(m.fails("tag", "bogus"), "unknown `mf tag` subcommand")
 }
 
+// --- assets ------------------------------------------------------------------
+
+// writeTempFile drops content on disk and returns its path, standing in for the
+// art, clip, or log a user would be uploading.
+func writeTempFile(t *testing.T, name string, content []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestIntegrationAssetLifecycle(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "requirement", "--title", "New enemy")
+
+	// Binary content, so a byte-mangling round trip would show up.
+	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x00, 0x1a, 0xff, 0xfe}
+	art := writeTempFile(t, "enemy_ref.png", png)
+
+	m.contains(m.run("asset", "add", "OZX-1", art), "uploaded enemy_ref.png", "OZX-1")
+	m.contains(m.run("asset", "list", "OZX-1"), "enemy_ref.png", "image/png")
+
+	// The download must be byte-identical, not merely similar.
+	dir := t.TempDir()
+	m.run("asset", "get", "OZX-1", "enemy_ref.png", "-o", filepath.Join(dir, "got.png"))
+	got, err := os.ReadFile(filepath.Join(dir, "got.png"))
+	if err != nil {
+		t.Fatalf("read downloaded asset: %v", err)
+	}
+	if !bytes.Equal(got, png) {
+		t.Errorf("downloaded bytes = %v, want %v", got, png)
+	}
+
+	// Replacing keeps the name, so anything referencing it stays valid.
+	v2 := writeTempFile(t, "enemy_v2.png", []byte("final artwork"))
+	m.contains(m.run("asset", "replace", "OZX-1", "enemy_ref.png", v2), "replaced enemy_ref.png")
+	m.run("asset", "get", "OZX-1", "enemy_ref.png", "-o", filepath.Join(dir, "v2.png"))
+	if got, _ := os.ReadFile(filepath.Join(dir, "v2.png")); string(got) != "final artwork" {
+		t.Errorf("content after replace = %q", got)
+	}
+
+	m.contains(m.run("asset", "rm", "OZX-1", "enemy_ref.png", "--yes"), "deleted enemy_ref.png")
+	m.contains(m.run("asset", "list", "OZX-1"), "no assets")
+}
+
+// An upload must not silently clobber an existing file of the same name.
+func TestIntegrationAssetOverwriteIsExplicit(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Crash")
+
+	first := writeTempFile(t, "log.txt", []byte("first"))
+	m.run("asset", "add", "OZX-1", first)
+
+	second := writeTempFile(t, "log.txt", []byte("second"))
+	m.contains(m.fails("asset", "add", "OZX-1", second), "already exists")
+
+	m.run("asset", "add", "OZX-1", second, "--overwrite")
+	out := m.run("asset", "get", "OZX-1", "log.txt", "-o", "-")
+	if out != "second" {
+		t.Errorf("content after --overwrite = %q, want second", out)
+	}
+}
+
+// The agent workflow: pull every asset into a working directory before coding.
+func TestIntegrationAssetGetAll(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "requirement", "--title", "Boss fight")
+
+	for _, f := range []struct {
+		name    string
+		content string
+	}{
+		{"design.md", "# boss"},
+		{"theme.wav", "RIFFdata"},
+		{"sheet.png", "pixels"},
+	} {
+		m.run("asset", "add", "OZX-1", writeTempFile(t, f.name, []byte(f.content)))
+	}
+
+	dir := filepath.Join(t.TempDir(), "assets")
+	m.contains(m.run("asset", "get", "OZX-1", "--all", "-o", dir), "3 asset(s)")
+
+	for name, want := range map[string]string{"design.md": "# boss", "theme.wav": "RIFFdata", "sheet.png": "pixels"} {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Errorf("missing %s: %v", name, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	// --all needs somewhere to write.
+	m.contains(m.fails("asset", "get", "OZX-1", "--all"), "-o <DIR> is required")
+}
+
+// Text content arriving on stdin, named explicitly — how an agent attaches a
+// generated report without touching the filesystem.
+func TestIntegrationAssetFromStdin(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Repro notes")
+
+	withStdin(t, "step 1\nstep 2\n", func() {
+		m.run("asset", "add", "OZX-1", "--file", "-", "--name", "repro.txt")
+	})
+	if out := m.run("asset", "get", "OZX-1", "repro.txt", "-o", "-"); out != "step 1\nstep 2\n" {
+		t.Errorf("stdin-uploaded content = %q", out)
+	}
+
+	// Stdin has no name of its own.
+	withStdin(t, "orphan", func() {
+		m.contains(m.fails("asset", "add", "OZX-1", "--file", "-"), "--name is required")
+	})
+}
+
+// `mf issue show` must surface attachments — otherwise an agent reading an
+// issue never learns the material exists.
+func TestIntegrationAssetsAppearInIssueShow(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "requirement", "--title", "New enemy")
+	m.run("asset", "add", "OZX-1", writeTempFile(t, "enemy_ref.png", []byte("pixels")))
+
+	m.contains(m.run("issue", "show", "OZX-1"), "Assets:", "enemy_ref.png")
+
+	data := m.json("issue", "show", "OZX-1")
+	assets, ok := data["assets"].([]any)
+	if !ok || len(assets) != 1 {
+		t.Fatalf("issue show --json assets = %v", data["assets"])
+	}
+	if first, _ := assets[0].(map[string]any); first["filename"] != "enemy_ref.png" {
+		t.Errorf("assets[0] = %v", assets[0])
+	}
+}
+
+func TestIntegrationAssetErrors(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Errors")
+
+	m.contains(m.fails("asset", "list", "OZX-99"), "not found")
+	m.contains(m.fails("asset", "get", "OZX-1", "absent.png"), "not found")
+	m.contains(m.fails("asset", "rm", "OZX-1", "absent.png", "--yes"), "not found")
+	m.contains(m.fails("asset", "add", "OZX-1", "/nonexistent/path.png"), "no such file")
+	m.contains(m.fails("asset", "nonsense", "OZX-1"), "unknown `mf asset` subcommand")
+
+	// A name that would escape the issue's namespace is refused by the server.
+	m.contains(m.fails("asset", "add", "OZX-1", writeTempFile(t, "ok.txt", []byte("x")), "--name", "../escape.txt"), "filename")
+}
+
 // --- memories --------------------------------------------------------------
 
 func TestIntegrationMemories(t *testing.T) {
@@ -671,6 +829,7 @@ func TestIntegrationJSONOutput(t *testing.T) {
 		{"issue", "dep", "list", "ALPHA-1"},
 		{"issue", "dep", "tree", "ALPHA-1"},
 		{"memory", "search"},
+		{"asset", "list", "ALPHA-1"},
 		{"tags"},
 	}
 	for _, args := range commands {
@@ -729,7 +888,7 @@ func TestIntegrationHelpTopics(t *testing.T) {
 	for _, args := range [][]string{
 		{}, {"help"}, {"-h"}, {"--help"},
 		{"help", "issue"}, {"help", "project"}, {"help", "memory"},
-		{"help", "tag"}, {"help", "workflow"}, {"help", "nonsense"},
+		{"help", "asset"}, {"help", "tag"}, {"help", "workflow"}, {"help", "nonsense"},
 	} {
 		stdout.Reset()
 		stderr.Reset()
@@ -747,6 +906,13 @@ func TestIntegrationHelpTopics(t *testing.T) {
 	for _, want := range []string{"attach-git", "--desc-file", "dep add", "untag"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("issue help missing %q", want)
+		}
+	}
+	stdout.Reset()
+	Main([]string{"help", "asset"}, &stdout, &stderr)
+	for _, want := range []string{"asset add", "--all", "asset:", "replace"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("asset help missing %q", want)
 		}
 	}
 	stdout.Reset()

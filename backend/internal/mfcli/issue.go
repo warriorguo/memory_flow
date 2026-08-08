@@ -108,11 +108,23 @@ func cmdIssueShow(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	// Attachments are supplementary: an instance that cannot serve them (an
+	// older server) should still show the issue.
+	assets, _, assetErr := e.fetchAssets(pos[0])
+	if assetErr != nil {
+		assets = nil
+	}
+	if e.asJSON {
+		raw = withAssets(raw, assets)
+	}
+
 	if e.emitJSON(raw) && !*withDeps && !*withHistory {
 		return nil
 	}
 	if !e.asJSON {
 		printIssue(e.out, issue)
+		printAssets(e, assets)
 	}
 
 	if *withDeps {

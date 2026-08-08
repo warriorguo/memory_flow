@@ -133,11 +133,27 @@ func probeOnce(base string) (bool, error) {
 	return resp.StatusCode == http.StatusOK, nil
 }
 
+// payload is a request body already encoded, with the content type to send it
+// under. Assets travel as raw bytes rather than JSON, so the body cannot always
+// be marshalled from a Go value.
+type payload struct {
+	data        []byte
+	contentType string
+}
+
+func jsonPayload(v any) (*payload, error) {
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("encode request: %w", err)
+	}
+	return &payload{data: encoded, contentType: "application/json"}, nil
+}
+
 // request performs an API call and returns the raw response body. On a
 // connection-level failure it drops the cached endpoint and re-resolves once,
 // so a stale cache (e.g. after leaving the home network) self-heals instead of
 // surfacing as an error.
-func (c *Client) request(method, path string, body any) (json.RawMessage, error) {
+func (c *Client) request(method, path string, body *payload) (json.RawMessage, error) {
 	raw, err := c.attempt(method, path, body)
 	if err == nil {
 		return raw, nil
@@ -163,7 +179,7 @@ func (c *Client) request(method, path string, body any) (json.RawMessage, error)
 	return c.attempt(method, path, body)
 }
 
-func (c *Client) attempt(method, path string, body any) (json.RawMessage, error) {
+func (c *Client) attempt(method, path string, body *payload) (json.RawMessage, error) {
 	base, err := c.Base()
 	if err != nil {
 		return nil, err
@@ -171,11 +187,7 @@ func (c *Client) attempt(method, path string, body any) (json.RawMessage, error)
 
 	var reader io.Reader
 	if body != nil {
-		encoded, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("encode request: %w", err)
-		}
-		reader = bytes.NewReader(encoded)
+		reader = bytes.NewReader(body.data)
 	}
 
 	req, err := http.NewRequest(method, base+path, reader)
@@ -183,7 +195,7 @@ func (c *Client) attempt(method, path string, body any) (json.RawMessage, error)
 		return nil, err
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", body.contentType)
 	}
 
 	resp, err := c.http.Do(req)
@@ -200,6 +212,59 @@ func (c *Client) attempt(method, path string, body any) (json.RawMessage, error)
 		return nil, apiError(resp.StatusCode, method, path, raw)
 	}
 	return raw, nil
+}
+
+// maxDownloadBytes bounds an asset download. The server caps uploads far below
+// this; the limit is only here so a misbehaving endpoint cannot exhaust memory.
+const maxDownloadBytes = 256 << 20
+
+// download fetches raw bytes — an asset's content — rather than a JSON
+// envelope, returning the body and its content type.
+func (c *Client) download(path string) ([]byte, string, error) {
+	base, err := c.Base()
+	if err != nil {
+		return nil, "", err
+	}
+
+	do := func() (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodGet, base+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		return c.http.Do(req)
+	}
+
+	resp, err := do()
+	if err != nil && isTLSVerifyError(err) && enableTLSFallback() {
+		c.http.Transport = newTransport()
+		resp, err = do()
+	}
+	if err != nil {
+		return nil, "", &connError{err}
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxDownloadBytes))
+	if err != nil {
+		return nil, "", &connError{err}
+	}
+	if resp.StatusCode >= 300 {
+		return nil, "", apiError(resp.StatusCode, http.MethodGet, path, raw)
+	}
+	return raw, resp.Header.Get("Content-Type"), nil
+}
+
+// uploadBytes sends raw content under an explicit content type — how assets are
+// created and replaced.
+func (c *Client) uploadBytes(method, path string, content []byte, contentType string, out any) (json.RawMessage, error) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	raw, err := c.request(method, path, &payload{data: content, contentType: contentType})
+	if err != nil {
+		return nil, err
+	}
+	return decodeInto(raw, out)
 }
 
 // connError marks a transport-level failure, which is retryable against a
@@ -260,10 +325,23 @@ func (c *Client) del(path string) (json.RawMessage, error) {
 }
 
 func (c *Client) call(method, path string, body, out any) (json.RawMessage, error) {
-	raw, err := c.request(method, path, body)
+	var encoded *payload
+	if body != nil {
+		var err error
+		if encoded, err = jsonPayload(body); err != nil {
+			return nil, err
+		}
+	}
+	raw, err := c.request(method, path, encoded)
 	if err != nil {
 		return nil, err
 	}
+	return decodeInto(raw, out)
+}
+
+// decodeInto unwraps the {"data": …} envelope into out, returning the full raw
+// body so --json can print it verbatim.
+func decodeInto(raw json.RawMessage, out any) (json.RawMessage, error) {
 	if out == nil {
 		return raw, nil
 	}
