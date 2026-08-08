@@ -10,8 +10,8 @@ import (
 	sqlitemigrations "github.com/warriorguo/memory_flow/backend/migrations_sqlite"
 )
 
-// newProjectRepo returns a repo backed by a throwaway SQLite database.
-func newProjectRepo(t *testing.T) *ProjectRepo {
+// newTestDB returns a throwaway SQLite database with every migration applied.
+func newTestDB(t *testing.T) database.DB {
 	t.Helper()
 
 	raw, err := database.OpenSQLiteDB(filepath.Join(t.TempDir(), "test.db"))
@@ -23,8 +23,12 @@ func newProjectRepo(t *testing.T) *ProjectRepo {
 	}
 	db := database.WrapSQLite(raw)
 	t.Cleanup(func() { db.Close() })
+	return db
+}
 
-	return NewProjectRepo(db)
+func newProjectRepo(t *testing.T) *ProjectRepo {
+	t.Helper()
+	return NewProjectRepo(newTestDB(t))
 }
 
 // seed creates a project and stamps its timestamps, so ordering assertions do

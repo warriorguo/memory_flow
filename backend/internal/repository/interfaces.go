@@ -75,6 +75,18 @@ type DependencyRepository interface {
 	HasPath(ctx context.Context, sourceID, targetID uuid.UUID) (bool, error)
 }
 
+// AssetRepository defines the interface for issue asset data access. Metadata
+// and bytes are deliberately separate calls so listing an issue's attachments
+// never loads their content.
+type AssetRepository interface {
+	Create(ctx context.Context, issueID uuid.UUID, req model.PutAssetRequest) (*model.IssueAsset, error)
+	Replace(ctx context.Context, issueID uuid.UUID, filename string, req model.PutAssetRequest) (*model.IssueAsset, error)
+	ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueAsset, error)
+	GetByFilename(ctx context.Context, issueID uuid.UUID, filename string) (*model.IssueAsset, error)
+	GetContent(ctx context.Context, assetID uuid.UUID) ([]byte, error)
+	Delete(ctx context.Context, issueID uuid.UUID, filename string) error
+}
+
 // UserRepository defines the interface for user data access.
 type UserRepository interface {
 	Create(ctx context.Context, username, passwordHash string, displayName *string, role string) (*model.User, error)

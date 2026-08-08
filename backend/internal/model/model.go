@@ -147,6 +147,30 @@ type Tag struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// IssueAsset is a file attached to an issue — reference art, a screen
+// recording, a crash log, a sample save. The bytes live in the database (see
+// [ContentStore] in the repository package for why), so this struct carries
+// only the metadata; content is fetched separately and never rides a list
+// response.
+type IssueAsset struct {
+	ID        uuid.UUID `json:"id"`
+	IssueID   uuid.UUID `json:"issue_id"`
+	Filename  string    `json:"filename"`
+	MimeType  string    `json:"mime_type"`
+	SizeBytes int64     `json:"size_bytes"`
+	Checksum  string    `json:"checksum"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PutAssetRequest carries an upload or a replacement. Checksum and size are
+// derived from Content by the repository, not supplied by the caller.
+type PutAssetRequest struct {
+	Filename string
+	MimeType string
+	Content  []byte
+}
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`
