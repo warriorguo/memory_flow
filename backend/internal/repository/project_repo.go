@@ -119,7 +119,7 @@ func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]m
 		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at,
 		       COUNT(*) OVER() AS total
 		FROM projects %s
-		ORDER BY created_at DESC
+		ORDER BY updated_at DESC, created_at DESC, id DESC
 		LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
 
