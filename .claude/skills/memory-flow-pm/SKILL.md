@@ -7,16 +7,18 @@ description: >
   (3) the user wants to record or retrieve a memory (recall/write);
   (4) the user asks about project progress or status;
   (5) the user wants to create or manage a project;
-  (6) the user wants to attach, fetch, replace, or delete a file (asset) on an issue.
+  (6) the user wants to attach, fetch, replace, or delete a file (asset) on an issue;
+  (7) the user wants to comment on an issue, or asks whether anything new has been said on one.
   Trigger on phrases like "file a bug", "create a requirement", "what are the open issues",
   "record this", "recall memory", "what's the project status", "list bugs", "check progress",
   "create project", "update issue", "mark as done", "attach a file", "upload the screenshot",
-  "get the assets for this issue", "replace the reference art".
+  "get the assets for this issue", "replace the reference art", "comment on this issue",
+  "any new comments", "reply on the ticket".
 compatibility: Uses the `mf` CLI, which reaches the remote Memory Flow API or falls back to the local standalone app
 allowed-tools: Bash(mf:*)
 metadata:
   author: warriorguo
-  version: "6.0"
+  version: "7.0"
   service-url: "https://memory-flow.local.playquota.com"
   local-fallback-url: "http://127.0.0.1:8080"
 ---
@@ -61,6 +63,7 @@ Accepted anywhere in the command line:
 | `--url <URL>` | Pin the instance instead of auto-resolving |
 | `--refresh` | Ignore the cached endpoint and probe again |
 | `--timeout <SECONDS>` | Request timeout (default 30) |
+| `--as <ID>` | Who you are — authors comments and decides whose unread count `mf issue show` reports (default `$MF_ACTOR`, else the OS user) |
 
 Default to the formatted output. Reach for `--json` only when you need a field
 the text view omits.
@@ -89,7 +92,21 @@ Output is already the table to present: Key | Title | Type | Priority | Status |
 ```bash
 mf issue show ORT-100
 mf issue show ORT-100 --deps --history
+mf issue show ORT-100 --comments      # also print the discussion and mark it read
 ```
+
+`mf issue show` is the one command that answers "what is the state of this
+work?". Alongside the fields it lists:
+
+- the issue's **assets** (the files the work needs or produced),
+- the **memories** recorded against it (what someone already figured out),
+- and a **comment line** — `Comments: 3, 1 unread for <you>` — when someone has
+  left a note you have not read.
+
+**Read unread comments before starting work on an issue.** A comment is how a
+human redirects the work after the description was written; acting on a stale
+description while an unread comment says otherwise is the failure this line
+exists to prevent.
 
 ### Filing issues (analyze-then-create workflow)
 
@@ -380,6 +397,40 @@ material handoff to landed implementation.
 
 ---
 
+## Comments (discussion on an issue)
+
+```bash
+mf comment add OZX-12 "Repro'd on 1.4.2 — the crash is in the loader"
+mf comment add OZX-12 --body-file notes.md
+mf comment list OZX-12                      # read them (this marks them read)
+mf comment list OZX-12 --unread --no-mark   # peek at what is new, without clearing it
+mf comment rm OZX-12 <COMMENT_ID> --yes
+```
+
+`mf issue comment` / `mf issue comments` are shorthands for add / list.
+
+Unread is **per reader**: whoever you are (`--as`, else `$MF_ACTOR`, else the OS
+user). Listing a thread files a read receipt for that identity, and your own
+comments never count as unread to you. So:
+
+1. `mf issue show KEY` tells you whether there is anything new for you.
+2. `mf comment list KEY` reads it and clears the flag.
+3. `mf comment add KEY "…"` replies.
+
+Report unread comments to the user rather than silently clearing them — the
+point of the flag is that a human's note gets read, not marked read.
+
+### Comment, memory, asset or history?
+
+- **comment** — a message to whoever reads the issue next ("blocked on the API",
+  "please use the v2 art"). Discussion, tied to this issue's lifetime.
+- **memory** — knowledge worth keeping after the issue closes (a root cause, a
+  design decision).
+- **asset** — a file that is an input to or an output of the work.
+- **history** — the automatic record of field changes. Nobody writes it.
+
+---
+
 ## Tags
 
 ```bash
@@ -401,20 +452,22 @@ mf issue untag MF-1 frontend
 | Show / create / update / archive project | `mf project show\|create\|update\|archive …` |
 | Project progress | `mf project progress <KEY> [--trend N]` |
 | List issues | `mf issues <PROJECT_KEY> [filters]` |
-| Show issue | `mf issue show <KEY> [--deps] [--history]` |
+| Show issue | `mf issue show <KEY> [--deps] [--history] [--comments]` |
 | Create issue | `mf issue create <PROJECT_KEY> --type T --title "…"` |
 | Update issue | `mf issue update <KEY> [--field …]` |
 | Start / transition | `mf issue start <KEY>` · `mf issue status <KEY> <STATUS>` |
 | Record commit | `mf issue attach-git <KEY> [<sha\|url>]` |
 | Complete issue | `mf issue done <KEY> --git HEAD` |
 | Issue history | `mf issue history <KEY>` |
+| Comments | `mf comment add\|list\|rm <ISSUE_KEY> …` |
+| Read the unread comments | `mf comment list <KEY>` |
 | Dependencies | `mf issue dep add\|list\|tree\|rm …` |
 | Effective priority | `mf issue priority <KEY>` |
 | Assets | `mf asset add\|list\|get\|replace\|rm <ISSUE_KEY> …` |
 | Pull every asset | `mf asset get <KEY> --all -o <DIR>` |
 | Memories | `mf memory add\|search\|show\|update\|rm …` |
 | Tags | `mf tags` · `mf tag create` · `mf issue tag\|untag` |
-| Help | `mf help [issue\|project\|asset\|memory\|tag\|workflow]` |
+| Help | `mf help [issue\|project\|asset\|comment\|memory\|tag\|workflow]` |
 
 Every command accepts an issue key (`MF-1`) or project key (`MF`) wherever an
 identifier is expected; UUIDs also work.
@@ -425,12 +478,13 @@ identifier is expected; UUIDs also work.
 
 1. **Infer type from context**: something broken = `bug`; something new = `requirement`
 2. **Choose memory type wisely**: `recall` for reusable context, `write` for output artifacts
-3. **Files go in assets, knowledge goes in memories** — attach the crash log as an asset, record what it revealed as a memory
+3. **Files go in assets, knowledge goes in memories, messages go in comments** — attach the crash log as an asset, record what it revealed as a memory, leave the question for the next reader as a comment
 4. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g. MF-1, MF-2)
 5. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected; add `--all` when the user asks for everything
 6. **Summarize progress in prose**, don't dump the table
 7. **Analyze before filing**: decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
 8. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
 9. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
-10. **No auth needed** — all endpoints are public
-11. **If `mf` is missing**, build and install it from the memory_flow repo: `make install-mf PREFIX=/opt/homebrew`
+10. **Check for unread comments before acting on an issue** — `mf issue show` says whether there are any; a human's note outranks a stale description
+11. **No auth needed** — all endpoints are public
+12. **If `mf` is missing**, build and install it from the memory_flow repo: `make install-mf PREFIX=/opt/homebrew`

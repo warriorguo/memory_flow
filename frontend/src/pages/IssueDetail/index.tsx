@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Descriptions, Button, Card, Modal, Form, Input, Select, Tag, Timeline, Space, Spin, message } from 'antd';
+import { Alert, Descriptions, Button, Card, List, Modal, Form, Input, Select, Tag, Timeline, Space, Spin, message } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory } from '../../api/issue';
 import { listAssets } from '../../api/asset';
+import { listComments } from '../../api/comment';
+import { listMemories } from '../../api/memory';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import Markdown from '../../components/Markdown';
 import AssetPanel from '../../components/AssetPanel';
+import CommentPanel from '../../components/CommentPanel';
 import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
@@ -40,6 +43,31 @@ const IssueDetail: React.FC = () => {
     queryFn: () => getIssueHistory(id!),
     enabled: !!id,
   });
+
+  // Shares CommentPanel's query key: the banner and the thread read one list.
+  const { data: thread } = useQuery({
+    queryKey: ['comments', id],
+    queryFn: () => listComments(id!),
+    enabled: !!id,
+  });
+
+  // Memories point at their source object, so the issue's UUID is the key —
+  // not the issue key in the URL.
+  const { data: memories } = useQuery({
+    queryKey: ['issueMemories', issue?.id],
+    queryFn: () => listMemories({ source_object_id: issue!.id, page_size: 50 }),
+    enabled: !!issue?.id,
+  });
+
+  // The comments that were unread when this issue was opened. CommentPanel marks
+  // the thread read on sight, so this has to remember what was new rather than
+  // recompute it — otherwise the banner would disappear before it was read. The
+  // snapshot is taken once per issue, on the thread's first load.
+  const [snapshot, setSnapshot] = useState<{ key?: string; ids: Set<string> }>({ ids: new Set() });
+  if (thread && snapshot.key !== id) {
+    setSnapshot({ key: id, ids: new Set(thread.comments.filter((c) => c.unread).map((c) => c.id)) });
+  }
+  const newCommentIds = snapshot.ids;
 
   const updateMutation = useMutation({
     mutationFn: (values: any) => updateIssue(id!, values),
@@ -74,6 +102,24 @@ const IssueDetail: React.FC = () => {
       <Button type="link" onClick={() => navigate(-1)} style={{ padding: 0, marginBottom: 16 }}>
         &larr; 返回
       </Button>
+
+      {newCommentIds.size > 0 && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`有 ${newCommentIds.size} 条新评论`}
+          description="其他人在这个工作项上留了言，建议先读一读再动手。"
+          action={
+            <Button
+              size="small"
+              onClick={() => document.getElementById('comments')?.scrollIntoView({ behavior: 'smooth' })}
+            >
+              查看评论
+            </Button>
+          }
+        />
+      )}
 
       <Card title={<span>{issue.issue_key} - {issue.title}</span>} extra={<Button icon={<EditOutlined />} onClick={() => { form.setFieldsValue(issue); setEditOpen(true); }}>编辑</Button>}>
         <Descriptions column={2} bordered>
@@ -114,6 +160,29 @@ const IssueDetail: React.FC = () => {
       </Card>
 
       <AssetPanel issueKey={id!} />
+
+      {memories && memories.data.length > 0 && (
+        <Card title="关联 Memory" style={{ marginTop: 16 }}>
+          <List
+            dataSource={memories.data}
+            renderItem={(m) => (
+              <List.Item key={m.id}>
+                <List.Item.Meta
+                  title={
+                    <Space>
+                      <Tag color={m.type === 'recall' ? 'blue' : 'green'}>{m.type}</Tag>
+                      <span>{m.title}</span>
+                    </Space>
+                  }
+                  description={<Markdown source={m.content} />}
+                />
+              </List.Item>
+            )}
+          />
+        </Card>
+      )}
+
+      <CommentPanel issueKey={id!} newIds={newCommentIds} />
 
       <Card title="操作历史" style={{ marginTop: 16 }}>
         <Timeline

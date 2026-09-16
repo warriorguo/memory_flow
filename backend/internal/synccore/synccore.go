@@ -57,6 +57,8 @@ type Snapshot struct {
 	IssueDependencies []model.IssueDependency `json:"issue_dependencies"`
 	Users             []SyncUser              `json:"users"`
 	Assets            []model.IssueAsset      `json:"assets"`
+	Comments          []model.IssueComment    `json:"comments"`
+	CommentReads      []model.CommentRead     `json:"comment_reads"`
 }
 
 // ImportResult summarizes a merge.
@@ -106,6 +108,12 @@ func Export(ctx context.Context, db database.DB) (*Snapshot, error) {
 	if s.Assets, err = exportAssets(ctx, db); err != nil {
 		return nil, err
 	}
+	if s.Comments, err = exportComments(ctx, db); err != nil {
+		return nil, err
+	}
+	if s.CommentReads, err = exportCommentReads(ctx, db); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -152,6 +160,16 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 	for _, u := range s.Users {
 		apply(ctx, db, res, userInsert, u.ID,
 			u.ID, u.Username, u.PasswordHash, u.DisplayName, u.Role, ts(u.CreatedAt))
+	}
+	for _, c := range s.Comments {
+		apply(ctx, db, res, commentUpsert, c.ID,
+			c.ID, c.IssueID, c.AuthorID, c.Body, ts(c.CreatedAt), ts(c.UpdatedAt))
+	}
+	// Read receipts are append-only facts — "this reader saw this comment" never
+	// stops being true — so a merge only ever adds the ones the other side has.
+	for _, cr := range s.CommentReads {
+		apply(ctx, db, res, commentReadInsert, cr.CommentID,
+			cr.CommentID, cr.Reader, ts(cr.ReadAt))
 	}
 	// Assets last: their rows reference issues, and the upsert drops the stored
 	// bytes whenever the incoming checksum differs, so the merge leaves behind an
@@ -308,9 +326,18 @@ ON CONFLICT(id) DO UPDATE SET
   content=CASE WHEN excluded.checksum = issue_assets.checksum THEN issue_assets.content ELSE NULL END
 WHERE excluded.updated_at > issue_assets.updated_at`
 
+const commentUpsert = `
+INSERT INTO issue_comments (id, issue_id, author_id, body, created_at, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6)
+ON CONFLICT(id) DO UPDATE SET
+  issue_id=excluded.issue_id, author_id=excluded.author_id, body=excluded.body,
+  updated_at=excluded.updated_at
+WHERE excluded.updated_at > issue_comments.updated_at`
+
 const tagInsert = `INSERT INTO tags (id, name, color, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`
 const historyInsert = `INSERT INTO issue_history (id, issue_id, field_name, old_value, new_value, operator_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`
 const issueTagInsert = `INSERT INTO issue_tag_rel (issue_id, tag_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`
 const memoryTagInsert = `INSERT INTO memory_tag_rel (memory_id, tag_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`
+const commentReadInsert = `INSERT INTO issue_comment_reads (comment_id, reader, read_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`
 const depInsert = `INSERT INTO issue_dependencies (id, source_issue_id, target_issue_id, type, severity, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`
 const userInsert = `INSERT INTO users (id, username, password_hash, display_name, role, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`

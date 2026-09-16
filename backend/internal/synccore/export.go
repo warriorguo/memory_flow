@@ -151,6 +151,42 @@ func exportAssets(ctx context.Context, db database.DB) ([]model.IssueAsset, erro
 	return out, rows.Err()
 }
 
+func exportComments(ctx context.Context, db database.DB) ([]model.IssueComment, error) {
+	rows, err := db.Query(ctx, `SELECT id, issue_id, author_id, body, created_at, updated_at FROM issue_comments`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.IssueComment
+	for rows.Next() {
+		var c model.IssueComment
+		if err := rows.Scan(&c.ID, &c.IssueID, &c.AuthorID, &c.Body, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// exportCommentReads carries the read receipts, so a reader who cleared an
+// issue's comments on one instance does not find them unread again on the other.
+func exportCommentReads(ctx context.Context, db database.DB) ([]model.CommentRead, error) {
+	rows, err := db.Query(ctx, `SELECT comment_id, reader, read_at FROM issue_comment_reads`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.CommentRead
+	for rows.Next() {
+		var cr model.CommentRead
+		if err := rows.Scan(&cr.CommentID, &cr.Reader, &cr.ReadAt); err != nil {
+			return nil, err
+		}
+		out = append(out, cr)
+	}
+	return out, rows.Err()
+}
+
 func exportUsers(ctx context.Context, db database.DB) ([]SyncUser, error) {
 	rows, err := db.Query(ctx, `SELECT id, username, password_hash, display_name, role, created_at FROM users`)
 	if err != nil {

@@ -241,3 +241,38 @@ func (m *MockTx) Rollback(ctx context.Context) error {
 	}
 	return nil
 }
+
+// MockCommentRepo is a mock implementation of repository.CommentRepository.
+type MockCommentRepo struct {
+	CreateFn        func(ctx context.Context, issueID uuid.UUID, req model.CreateCommentRequest) (*model.IssueComment, error)
+	ListByIssueIDFn func(ctx context.Context, issueID uuid.UUID) ([]model.IssueComment, error)
+	DeleteFn        func(ctx context.Context, issueID, commentID uuid.UUID) error
+	ReadIDsFn       func(ctx context.Context, issueID uuid.UUID, reader string) (map[uuid.UUID]bool, error)
+	MarkReadFn      func(ctx context.Context, issueID uuid.UUID, reader string) error
+}
+
+func (m *MockCommentRepo) Create(ctx context.Context, issueID uuid.UUID, req model.CreateCommentRequest) (*model.IssueComment, error) {
+	return m.CreateFn(ctx, issueID, req)
+}
+
+func (m *MockCommentRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueComment, error) {
+	return m.ListByIssueIDFn(ctx, issueID)
+}
+
+func (m *MockCommentRepo) Delete(ctx context.Context, issueID, commentID uuid.UUID) error {
+	return m.DeleteFn(ctx, issueID, commentID)
+}
+
+func (m *MockCommentRepo) ReadIDs(ctx context.Context, issueID uuid.UUID, reader string) (map[uuid.UUID]bool, error) {
+	if m.ReadIDsFn != nil {
+		return m.ReadIDsFn(ctx, issueID, reader)
+	}
+	return nil, nil
+}
+
+func (m *MockCommentRepo) MarkRead(ctx context.Context, issueID uuid.UUID, reader string) error {
+	if m.MarkReadFn != nil {
+		return m.MarkReadFn(ctx, issueID, reader)
+	}
+	return nil
+}

@@ -341,6 +341,25 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
+// A reader following a doc that names a verb this binary lacks has to be told
+// that an outdated binary is a possible cause — otherwise the workflow reads as
+// broken and gets abandoned.
+func TestUnknownCommandSuggestsRebuild(t *testing.T) {
+	for _, args := range [][]string{
+		{"wat"},                            // unknown top-level command
+		{"issue", "wat", "MF-1"},           // unknown subcommand
+		{"issue", "show", "MF-1", "--wat"}, // unknown flag
+	} {
+		_, stderr, code := runCLI(t, "http://127.0.0.1:1", args...)
+		if code == 0 {
+			t.Fatalf("%v should fail", args)
+		}
+		if !strings.Contains(stderr, "make install-mf") {
+			t.Errorf("%v: stderr should suggest rebuilding: %q", args, stderr)
+		}
+	}
+}
+
 func TestHelpExitsZero(t *testing.T) {
 	var stdout, stderr strings.Builder
 	if code := Main([]string{"help"}, &stdout, &stderr); code != 0 {

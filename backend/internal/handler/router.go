@@ -14,6 +14,7 @@ func NewRouter(
 	dependencyHandler *DependencyHandler,
 	syncHandler *SyncHandler,
 	assetHandler *AssetHandler,
+	commentHandler *CommentHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -52,6 +53,12 @@ func NewRouter(
 		r.Get("/issues/{id}/assets/{filename}", assetHandler.Get)
 		r.Put("/issues/{id}/assets/{filename}", assetHandler.Replace)
 		r.Delete("/issues/{id}/assets/{filename}", assetHandler.Delete)
+
+		// Issue comments
+		r.Get("/issues/{id}/comments", commentHandler.List)
+		r.Post("/issues/{id}/comments", commentHandler.Create)
+		r.Post("/issues/{id}/comments/read", commentHandler.MarkRead)
+		r.Delete("/issues/{id}/comments/{commentId}", commentHandler.Delete)
 
 		// Issue tags
 		r.Post("/issues/{id}/tags", tagHandler.AddToIssue)

@@ -163,6 +163,41 @@ type IssueAsset struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// IssueComment is a note on an issue — a question, a review remark, a hand-off
+// note. Comments are append-only discussion; field changes belong in
+// [IssueHistory] and reusable knowledge belongs in a [Memory].
+type IssueComment struct {
+	ID        uuid.UUID `json:"id"`
+	IssueID   uuid.UUID `json:"issue_id"`
+	AuthorID  *string   `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// Unread is per-reader state, filled in only when a request names a reader.
+	// It is not stored on the comment row — see [CommentRead].
+	Unread bool `json:"unread"`
+}
+
+// CommentRead is a read receipt: this reader has seen this comment. Read state
+// is per comment rather than a per-reader watermark because a watermark cannot
+// tell a comment written in the same second as the watermark from one already
+// read — see the migration for the full argument.
+type CommentRead struct {
+	CommentID uuid.UUID `json:"comment_id"`
+	Reader    string    `json:"reader"`
+	ReadAt    time.Time `json:"read_at"`
+}
+
+// CommentSummary is the "you have mail" line: how many comments an issue
+// carries and how many of them this reader has not seen yet.
+type CommentSummary struct {
+	Total  int `json:"total"`
+	Unread int `json:"unread"`
+	// LastCommentAt is nil when the issue has no comments.
+	LastCommentAt *time.Time `json:"last_comment_at,omitempty"`
+	LastAuthor    *string    `json:"last_author,omitempty"`
+}
+
 // PutAssetRequest carries an upload or a replacement. Checksum and size are
 // derived from Content by the repository, not supplied by the caller.
 type PutAssetRequest struct {
@@ -239,6 +274,18 @@ type UpdateIssueRequest struct {
 
 type TransitionStatusRequest struct {
 	Status string `json:"status"`
+}
+
+type CreateCommentRequest struct {
+	Body     string  `json:"body"`
+	AuthorID *string `json:"author_id"`
+}
+
+// MarkCommentsReadRequest marks every comment currently on the issue as read
+// for one reader. Reader identity is a free-form string (a username, an agent
+// name) — the same convention the issue's assignee_id and creator_id follow.
+type MarkCommentsReadRequest struct {
+	Reader string `json:"reader"`
 }
 
 type CreateMemoryRequest struct {

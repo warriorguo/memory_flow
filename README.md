@@ -9,6 +9,7 @@
 - **进度管理** — 看板视图（拖拽）、状态/优先级统计图表、趋势分析
 - **Memory 管理** — Recall / Write 两类记录，支持关联项目和工作项，为 AI/Agent 协作提供数据基础
 - **附件（Asset）管理** — 每个工作项可挂载图片、音视频、日志等任意文件，按文件名寻址；描述中用 `asset:<文件名>` 直接引用，前端内联预览，`mf asset` 供 Agent 取用与回传
+- **评论（Comment）** — 工作项上的讨论留言，按阅读者记录已读回执；`mf issue show` 与工作项详情页会提示"有几条未读评论"，并展示该工作项关联的 Memory
 
 ## 技术栈
 
@@ -85,12 +86,19 @@ mf issues MF                         # 未关闭的工作项
 mf issue show ORT-100
 mf issue attach-git ORT-100 5253083  # 由项目 git_url 生成 commit 链接
 mf issue done ORT-100                # 校验 git_url，并自动走完状态流转
+
+mf comment add ORT-100 "复现于 1.4.2"  # 留言
+mf comment list ORT-100              # 阅读（同时标记已读）
 ```
+
+`mf issue show` 除了工作项本身，还会列出它的附件、关联 Memory，以及"有几条评论
+未读"的提示——未读是相对"你是谁"而言的（`--as` / `$MF_ACTOR` / 系统用户名）。
 
 常用命令：`mf projects` / `mf project show|create|update|progress`、
 `mf issue list|show|create|update|start|status|done|attach-git|history|dep|tag`、
-`mf memory add|search|show`、`mf tags`。全局参数：`--json`（原始响应）、
-`--url`、`--refresh`、`--timeout`。详见 `mf help [issue|project|memory|tag|workflow]`。
+`mf comment add|list|rm`、`mf memory add|search|show`、`mf tags`。全局参数：
+`--json`（原始响应）、`--url`、`--refresh`、`--timeout`、`--as`（当前身份）。
+详见 `mf help [issue|project|asset|comment|memory|tag|workflow]`。
 
 其中 `mf issue done` 会强制执行收尾规范：`git_url` 为空时拒绝关闭；
 状态图不允许的单步跳转（如 `todo → done`）会自动补齐中间状态。
@@ -136,6 +144,9 @@ memory_flow/
 | 工作项 | `PATCH /issues/:id/status` | 状态流转 |
 | 附件 | `GET/POST /issues/:id/assets` | 附件列表 / 上传 |
 | 附件 | `GET/PUT/DELETE /issues/:id/assets/:filename` | 访问 / 替换 / 删除 |
+| 评论 | `GET/POST /issues/:id/comments` | 评论列表（`?reader=` 带未读标记）/ 发表 |
+| 评论 | `POST /issues/:id/comments/read` | 标记该阅读者已读 |
+| 评论 | `DELETE /issues/:id/comments/:commentId` | 删除评论 |
 | 进度 | `GET /projects/:id/progress/summary` | 统计概览 |
 | 进度 | `GET /projects/:id/progress/trend` | 趋势数据 |
 | 标签 | `GET/POST /tags` | 标签管理 |

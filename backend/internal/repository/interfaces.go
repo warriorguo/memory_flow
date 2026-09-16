@@ -87,6 +87,17 @@ type AssetRepository interface {
 	Delete(ctx context.Context, issueID uuid.UUID, filename string) error
 }
 
+// CommentRepository defines the interface for issue comment data access.
+// Read state is per (issue, reader) and lives alongside the comments because
+// "is there anything new for me here?" is the question the API is asked most.
+type CommentRepository interface {
+	Create(ctx context.Context, issueID uuid.UUID, req model.CreateCommentRequest) (*model.IssueComment, error)
+	ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueComment, error)
+	Delete(ctx context.Context, issueID, commentID uuid.UUID) error
+	ReadIDs(ctx context.Context, issueID uuid.UUID, reader string) (map[uuid.UUID]bool, error)
+	MarkRead(ctx context.Context, issueID uuid.UUID, reader string) error
+}
+
 // UserRepository defines the interface for user data access.
 type UserRepository interface {
 	Create(ctx context.Context, username, passwordHash string, displayName *string, role string) (*model.User, error)

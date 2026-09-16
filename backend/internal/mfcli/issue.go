@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
 
@@ -96,30 +97,45 @@ func cmdIssueShow(e *env, args []string) error {
 	fs := newFlagSet("issue show")
 	withDeps := fs.Bool("deps", false, "also show dependencies")
 	withHistory := fs.Bool("history", false, "also show change history")
+	readComments := fs.Bool("comments", false, "print the full comment thread and mark it read")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
 	}
-	if err := need(pos, 1, "issue show <ISSUE_KEY> [--deps] [--history]"); err != nil {
+	if err := need(pos, 1, "issue show <ISSUE_KEY> [--deps] [--history] [--comments]"); err != nil {
 		return err
 	}
+	key := pos[0]
 
-	issue, raw, err := e.fetchIssue(pos[0])
+	issue, raw, err := e.fetchIssue(key)
 	if err != nil {
 		return err
 	}
 
-	// Attachments are supplementary: an instance that cannot serve them (an
-	// older server) should still show the issue.
-	assets, _, assetErr := e.fetchAssets(pos[0])
+	// Attachments, comments and memories are supplementary: an instance that
+	// cannot serve them (an older server) should still show the issue.
+	assets, _, assetErr := e.fetchAssets(key)
 	if assetErr != nil {
 		assets = nil
 	}
+	comments, _, commentErr := e.fetchComments(key)
+	if commentErr != nil {
+		comments = nil
+	}
+	memories, memErr := e.fetchIssueMemories(issue.ID)
+	if memErr != nil {
+		memories = nil
+	}
 	if e.asJSON {
 		raw = withAssets(raw, assets)
+		raw = withComments(raw, comments)
+		raw = withMemories(raw, memories)
 	}
 
 	if e.emitJSON(raw) && !*withDeps && !*withHistory {
+		if *readComments {
+			return e.markCommentsRead(key)
+		}
 		return nil
 	}
 	if !e.asJSON {
@@ -131,6 +147,19 @@ func cmdIssueShow(e *env, args []string) error {
 		}
 		printIssue(e.out, issue)
 		printAssets(e, assets)
+		printIssueMemories(e, memories)
+		// The whole point of the hint is that nobody has to remember to ask
+		// whether someone left a note on the issue.
+		if *readComments && len(comments) > 0 {
+			printComments(e, key, comments)
+		} else {
+			printCommentHint(e, key, comments)
+		}
+	}
+	if *readComments && len(comments) > 0 {
+		if err := e.markCommentsRead(key); err != nil {
+			return err
+		}
 	}
 
 	if *withDeps {
@@ -435,6 +464,49 @@ func cmdIssuePriority(e *env, args []string) error {
 }
 
 // --- shared issue helpers --------------------------------------------------
+
+// fetchIssueMemories returns the memories recorded against an issue. Memories
+// point at their source object, so the issue's UUID is the key — not its
+// human-readable issue key.
+func (e *env) fetchIssueMemories(issueID uuid.UUID) ([]model.MemoryResponse, error) {
+	var memories []model.MemoryResponse
+	_, err := e.client.get("/api/v1/memories"+query(map[string]string{
+		"source_object_id": issueID.String(),
+		"page_size":        "50",
+	}), &memories)
+	if err != nil {
+		return nil, err
+	}
+	return memories, nil
+}
+
+// printIssueMemories renders the Memories block of `mf issue show`: the
+// knowledge already recorded against this issue, so a reader picking it up does
+// not rediscover a root cause someone already wrote down.
+func printIssueMemories(e *env, memories []model.MemoryResponse) {
+	if len(memories) == 0 {
+		return
+	}
+	e.printf("\nMemories:\n")
+	rows := make([][]string, 0, len(memories))
+	for _, m := range memories {
+		rows = append(rows, []string{
+			"  " + m.Type,
+			truncate(m.Title, 46),
+			truncate(m.Content, 50),
+			m.ID.String(),
+		})
+	}
+	table(e.out, nil, rows)
+}
+
+// withMemories splices the related memories into an issue's JSON envelope.
+func withMemories(raw []byte, memories []model.MemoryResponse) []byte {
+	if memories == nil {
+		memories = []model.MemoryResponse{}
+	}
+	return spliceIssueData(raw, "memories", memories)
+}
 
 func (e *env) fetchIssue(key string) (*model.Issue, []byte, error) {
 	var issue model.Issue

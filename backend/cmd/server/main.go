@@ -53,6 +53,7 @@ func main() {
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
 	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
+	commentRepo := repository.NewCommentRepo(db)
 
 	// Initialize services
 	projectSvc := service.NewProjectService(projectRepo)
@@ -61,6 +62,7 @@ func main() {
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, cfg.MaxAssetBytes)
+	commentSvc := service.NewCommentService(commentRepo)
 
 	// Initialize ID resolver (allows UUID or key in URL paths)
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
@@ -74,6 +76,7 @@ func main() {
 	depHandler := handler.NewDependencyHandler(depSvc, resolver)
 	syncHandler := handler.NewSyncHandler(db, cfg.SyncToken)
 	assetHandler := handler.NewAssetHandler(assetSvc, issueSvc, resolver)
+	commentHandler := handler.NewCommentHandler(commentSvc, resolver)
 
 	// Set up router
 	router := handler.NewRouter(
@@ -85,6 +88,7 @@ func main() {
 		depHandler,
 		syncHandler,
 		assetHandler,
+		commentHandler,
 	)
 
 	// Start server

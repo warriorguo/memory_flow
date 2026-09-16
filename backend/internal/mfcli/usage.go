@@ -23,6 +23,7 @@ Commands:
   issue …                 show | create | update | status | start | done |
                           attach-git | history | priority | tag | dep
   asset …                 add | list | get | replace | rm  (files attached to an issue)
+  comment …               add | list | rm  (discussion on an issue)
   memories                Search memories
   memory …                add | search | show | update | rm
   tags                    List tags
@@ -33,8 +34,12 @@ Global flags (accepted anywhere in the command line):
   --url <URL>             Pin the instance instead of auto-resolving
   --refresh               Ignore the cached endpoint and probe again
   --timeout <SECONDS>     Request timeout (default 30)
+  --as <ID>               Who you are: authors comments, and decides whose
+                          unread count 'mf issue show' reports
+                          (default: $MF_ACTOR, else the OS user)
 
-Run 'mf help <topic>' for details: issue, project, asset, memory, tag, workflow.
+Run 'mf help <topic>' for details: issue, project, asset, comment, memory, tag,
+workflow.
 
 Examples:
   mf ctx
@@ -50,7 +55,10 @@ const issueUsage = `mf issue — bugs and requirements
                               [--assignee ID] [--keyword TEXT] [--all] [--limit N] [--page N]
       Open issues only by default; --all or an explicit --status includes done/closed/rejected.
 
-  mf issue show <ISSUE_KEY> [--deps] [--history]
+  mf issue show <ISSUE_KEY> [--deps] [--history] [--comments]
+      Also lists the issue's assets, its recorded memories, and whether anyone
+      has left comments you have not read. --comments prints the thread and
+      marks it read.
   mf issue create <PROJECT_KEY> --type <bug|requirement> --title "…" [--desc "…"|--desc-file FILE]
                                 [--priority P1] [--assignee ID] [--source S] [--version V]
                                 [--git-url URL] [--pr-url URL] [--doc-url URL]
@@ -61,6 +69,8 @@ const issueUsage = `mf issue — bugs and requirements
   mf issue done <ISSUE_KEY> [--git <sha|url>] [--repo DIR] [--force]
   mf issue attach-git <ISSUE_KEY> [<sha|url>] [--repo DIR] [--repo-url URL] [--pr <NUM|URL>]
   mf issue history <ISSUE_KEY>
+  mf issue comment <ISSUE_KEY> "…"       Shorthand for 'mf comment add'
+  mf issue comments <ISSUE_KEY>          Shorthand for 'mf comment list'
   mf issue priority <ISSUE_KEY>          Effective priority, including inherited
   mf issue tag <ISSUE_KEY> <NAME>…       Creates tags that do not exist yet
   mf issue untag <ISSUE_KEY> <NAME>
@@ -114,6 +124,30 @@ Typical loop:
   mf asset get OZX-12 --all -o ./assets                     # pull it before coding
   mf asset add OZX-12 ./screenshots/result.png              # hand back the proof
   mf asset replace OZX-12 enemy_ref.png ~/art/enemy_v2.png  # art revised the file
+`
+
+const commentUsage = `mf comment — discussion on an issue
+
+  mf comment add <ISSUE_KEY> "…" [--body-file FILE] [--author ID]
+  mf comment add <ISSUE_KEY> --body-file -             Read the comment from stdin
+  mf comment list <ISSUE_KEY> [--unread] [--no-mark]
+  mf comment rm <ISSUE_KEY> <COMMENT_ID> [--yes]
+
+'mf issue comment' and 'mf issue comments' are shorthands for add and list.
+
+Comments are per-reader: listing them marks them read for whoever you are
+(--as, else $MF_ACTOR, else the OS user), and 'mf issue show' reports how many
+are still unread for that identity. Your own comments never count as unread.
+Pass --no-mark to look without clearing the flag.
+
+  mf issue show MF-1                       # "Comments: 3, 1 unread …"
+  mf comment list MF-1                     # read them (clears the flag)
+  mf comment list MF-1 --unread --no-mark  # peek at what is new
+  mf comment add MF-1 "Repro'd on 1.4.2 — the crash is in the loader"
+
+Comment, memory or history? A **comment** is a message to whoever reads the
+issue next. A **memory** is knowledge worth keeping after the issue closes. The
+**history** is the automatic record of field changes — nobody writes it.
 `
 
 const memoryUsage = `mf memory — recorded context
@@ -174,6 +208,8 @@ func printUsage(w io.Writer, topic string) {
 		fmt.Fprint(w, projectUsage)
 	case "asset", "assets":
 		fmt.Fprint(w, assetUsage)
+	case "comment", "comments":
+		fmt.Fprint(w, commentUsage)
 	case "memory", "memories":
 		fmt.Fprint(w, memoryUsage)
 	case "tag", "tags":

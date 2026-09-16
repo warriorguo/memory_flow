@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -16,13 +17,17 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
-// env carries everything a command needs: the API client, where to write, and
-// whether the caller asked for raw JSON.
+// env carries everything a command needs: the API client, where to write,
+// whether the caller asked for raw JSON, and who is running the command.
 type env struct {
 	client *Client
 	out    io.Writer
 	errOut io.Writer
 	asJSON bool
+	// actor names whoever is running the command. It authors comments and
+	// identifies the reader whose unread count `mf issue show` reports. There is
+	// no login, so this is a convention, not an authenticated identity.
+	actor string
 }
 
 // Main runs the CLI and returns the process exit code.
@@ -48,7 +53,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	client := NewClient(opts.url, opts.timeout)
 	client.NoCache = opts.refresh
-	e := &env{client: client, out: stdout, errOut: stderr, asJSON: opts.asJSON}
+	e := &env{client: client, out: stdout, errOut: stderr, asJSON: opts.asJSON, actor: resolveActor(opts.actor)}
 
 	if err := dispatch(e, rest); err != nil {
 		fmt.Fprintln(stderr, "mf:", err)
@@ -65,6 +70,25 @@ type globalOpts struct {
 	timeout time.Duration
 	asJSON  bool
 	refresh bool
+	actor   string
+}
+
+// resolveActor decides who this invocation is: --as, then $MF_ACTOR, then the
+// OS user. Comment authorship and unread tracking both hang off it, so it has
+// to produce something stable without any setup — an agent that never passes
+// --as still gets a consistent identity across runs on the same machine.
+func resolveActor(flagValue string) string {
+	for _, candidate := range []string{flagValue, os.Getenv("MF_ACTOR"), os.Getenv("MEMORY_FLOW_ACTOR")} {
+		if v := strings.TrimSpace(candidate); v != "" {
+			return v
+		}
+	}
+	if u, err := user.Current(); err == nil {
+		if v := strings.TrimSpace(u.Username); v != "" {
+			return v
+		}
+	}
+	return "unknown"
 }
 
 // extractGlobals pulls the flags that apply to every command out of the
@@ -106,6 +130,12 @@ func extractGlobals(args []string) (globalOpts, []string, error) {
 				return opts, nil, fmt.Errorf("--timeout must be a number of seconds")
 			}
 			opts.timeout = time.Duration(secs) * time.Second
+		case "--as":
+			v, err := takeValue()
+			if err != nil {
+				return opts, nil, err
+			}
+			opts.actor = v
 		case "--json":
 			opts.asJSON = true
 		case "--refresh":
@@ -141,8 +171,10 @@ func dispatch(e *env, args []string) error {
 		return dispatchTag(e, args[1:])
 	case "asset", "assets":
 		return dispatchAsset(e, args[1:])
+	case "comment", "comments":
+		return dispatchComment(e, args[1:])
 	default:
-		return fmt.Errorf("unknown command %q (run `mf help`)", args[0])
+		return unknownf("unknown command %q (run `mf help`)", args[0])
 	}
 }
 
@@ -164,13 +196,13 @@ func dispatchProject(e *env, args []string) error {
 	case "archive":
 		return cmdProjectArchive(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf project` subcommand %q", args[0])
+		return unknownf("unknown `mf project` subcommand %q", args[0])
 	}
 }
 
 func dispatchIssue(e *env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mf issue <list|show|create|update|status|start|done|attach-git|history|dep|tag> …")
+		return fmt.Errorf("usage: mf issue <list|show|create|update|status|start|done|attach-git|history|comment|comments|dep|tag> …")
 	}
 	switch args[0] {
 	case "list", "ls":
@@ -191,6 +223,10 @@ func dispatchIssue(e *env, args []string) error {
 		return cmdIssueAttachGit(e, args[1:])
 	case "history":
 		return cmdIssueHistory(e, args[1:])
+	case "comment":
+		return cmdCommentAdd(e, args[1:])
+	case "comments":
+		return cmdCommentList(e, args[1:])
 	case "priority":
 		return cmdIssuePriority(e, args[1:])
 	case "tag":
@@ -200,7 +236,7 @@ func dispatchIssue(e *env, args []string) error {
 	case "dep", "deps":
 		return dispatchDep(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf issue` subcommand %q", args[0])
+		return unknownf("unknown `mf issue` subcommand %q", args[0])
 	}
 }
 
@@ -218,7 +254,7 @@ func dispatchDep(e *env, args []string) error {
 	case "tree":
 		return cmdDepTree(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf issue dep` subcommand %q", args[0])
+		return unknownf("unknown `mf issue dep` subcommand %q", args[0])
 	}
 }
 
@@ -238,7 +274,23 @@ func dispatchAsset(e *env, args []string) error {
 	case "rm", "delete":
 		return cmdAssetRemove(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf asset` subcommand %q", args[0])
+		return unknownf("unknown `mf asset` subcommand %q", args[0])
+	}
+}
+
+func dispatchComment(e *env, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: mf comment <add|list|rm> <ISSUE_KEY> …")
+	}
+	switch args[0] {
+	case "add", "new", "post":
+		return cmdCommentAdd(e, args[1:])
+	case "list", "ls", "read", "show":
+		return cmdCommentList(e, args[1:])
+	case "rm", "delete":
+		return cmdCommentRemove(e, args[1:])
+	default:
+		return unknownf("unknown `mf comment` subcommand %q", args[0])
 	}
 }
 
@@ -258,7 +310,7 @@ func dispatchMemory(e *env, args []string) error {
 	case "rm", "delete":
 		return cmdMemoryRemove(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf memory` subcommand %q", args[0])
+		return unknownf("unknown `mf memory` subcommand %q", args[0])
 	}
 }
 
@@ -272,7 +324,7 @@ func dispatchTag(e *env, args []string) error {
 	case "create", "add":
 		return cmdTagCreate(e, args[1:])
 	default:
-		return fmt.Errorf("unknown `mf tag` subcommand %q", args[0])
+		return unknownf("unknown `mf tag` subcommand %q", args[0])
 	}
 }
 
@@ -290,6 +342,9 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 		positional = append(positional, args[i])
 	}
 	if err := fs.Parse(args[i:]); err != nil {
+		if strings.Contains(err.Error(), "not defined") {
+			return nil, unknownf("%w", err)
+		}
 		return nil, err
 	}
 	// Anything left after flag parsing is a positional in the wrong place.
@@ -297,6 +352,19 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 		return nil, fmt.Errorf("unexpected argument %q (positional arguments must come before flags)", extra[0])
 	}
 	return positional, nil
+}
+
+// unknownf builds the error for "mf does not know that command or flag". It
+// always appends the binary's own version, because the reader cannot otherwise
+// tell the two causes apart: either the verb never existed, or — the case this
+// exists for — the doc that told them to run it (a skill, an agent prompt, the
+// README) ships from the working tree while the `mf` on PATH was built from an
+// older commit. Silently reading "unknown command" as the first cause is how a
+// documented workflow gets abandoned as broken.
+func unknownf(format string, a ...any) error {
+	return fmt.Errorf(format+"\n  this is mf %s — if a doc or skill told you to run it, "+
+		"your binary predates that doc: rebuild it with `make install-mf`",
+		append(a, Version)...)
 }
 
 func newFlagSet(name string) *flag.FlagSet {

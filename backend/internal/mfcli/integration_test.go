@@ -50,6 +50,7 @@ func newMFTest(t *testing.T) *mfTest {
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
 	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
+	commentRepo := repository.NewCommentRepo(db)
 
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, historyRepo)
@@ -57,6 +58,7 @@ func newMFTest(t *testing.T) *mfTest {
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, 0)
+	commentSvc := service.NewCommentService(commentRepo)
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
 	router := handler.NewRouter(
@@ -68,6 +70,7 @@ func newMFTest(t *testing.T) *mfTest {
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, ""),
 		handler.NewAssetHandler(assetSvc, issueSvc, resolver),
+		handler.NewCommentHandler(commentSvc, resolver),
 	)
 
 	srv := httptest.NewServer(router)
@@ -741,6 +744,105 @@ func TestIntegrationAssetErrors(t *testing.T) {
 
 	// A name that would escape the issue's namespace is refused by the server.
 	m.contains(m.fails("asset", "add", "OZX-1", writeTempFile(t, "ok.txt", []byte("x")), "--name", "../escape.txt"), "filename")
+}
+
+// --- comments --------------------------------------------------------------
+
+func TestIntegrationCommentLifecycle(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Boss stuck in wall")
+
+	m.contains(m.run("comment", "list", "OZX-1"), "no comments on OZX-1")
+
+	m.contains(m.run("--as", "alice", "comment", "add", "OZX-1", "Repro'd on 1.4.2"),
+		"commented on OZX-1 as alice")
+	// The `mf issue comment` spelling is the same command.
+	m.run("--as", "alice", "issue", "comment", "OZX-1", "--body", "Looks like the loader")
+
+	// Bob has read nothing, so both comments are new to him and `issue show`
+	// says so without being asked.
+	shown := m.run("--as", "bob", "issue", "show", "OZX-1")
+	// The hint leads with the newest unread comment, so it is useful on its own.
+	// Which of the two it is depends on sub-millisecond ordering, so assert the
+	// author rather than the body.
+	m.contains(shown, "Comments: 2, 2 unread for bob", "mf comment list OZX-1", "latest: [alice]")
+
+	// Alice wrote them, so they are not unread to her.
+	m.contains(m.run("--as", "alice", "issue", "show", "OZX-1"), "Comments: 2, none unread")
+
+	// Reading clears the flag for bob only.
+	out := m.run("--as", "bob", "comment", "list", "OZX-1")
+	m.contains(out, "alice", "Repro'd on 1.4.2", "Looks like the loader", "2 comment(s) on OZX-1")
+	m.contains(m.run("--as", "bob", "issue", "show", "OZX-1"), "Comments: 2, none unread")
+
+	// A new comment from someone else is unread again.
+	m.run("--as", "carol", "comment", "add", "OZX-1", "Fixed on my branch")
+	m.contains(m.run("--as", "bob", "issue", "show", "OZX-1"), "Comments: 3, 1 unread for bob")
+	m.contains(m.run("--as", "bob", "comment", "list", "OZX-1", "--unread", "--no-mark"),
+		"Fixed on my branch", "1 comment(s)")
+	m.omits(m.run("--as", "bob", "comment", "list", "OZX-1", "--unread", "--no-mark"), "Repro'd on 1.4.2")
+	// --no-mark looked without reading.
+	m.contains(m.run("--as", "bob", "issue", "show", "OZX-1"), "1 unread for bob")
+
+	// --comments prints the thread inline and marks it read in one step.
+	m.contains(m.run("--as", "bob", "issue", "show", "OZX-1", "--comments"),
+		"Comments:", "Fixed on my branch", "3 comment(s) on OZX-1")
+	m.contains(m.run("--as", "bob", "issue", "show", "OZX-1"), "Comments: 3, none unread")
+}
+
+func TestIntegrationCommentsInJSONAndErrors(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Boss stuck in wall")
+	m.run("--as", "alice", "comment", "add", "OZX-1", "Repro'd on 1.4.2")
+
+	data := m.json("--as", "bob", "issue", "show", "OZX-1")
+	comments, ok := data["comments"].([]any)
+	if !ok || len(comments) != 1 {
+		t.Fatalf("issue show --json comments = %v", data["comments"])
+	}
+	first, _ := comments[0].(map[string]any)
+	if first["body"] != "Repro'd on 1.4.2" || first["unread"] != true {
+		t.Errorf("comments[0] = %v, want bob's unread comment", first)
+	}
+
+	// A comment body arriving on stdin, and deletion by id.
+	withStdin(t, "Multi\nline\nnote\n", func() {
+		m.run("comment", "add", "OZX-1", "--body-file", "-")
+	})
+	m.contains(m.run("comment", "list", "OZX-1", "--no-mark"), "Multi", "line", "note")
+
+	id, _ := first["id"].(string)
+	m.contains(m.run("comment", "rm", "OZX-1", id, "--yes"), "deleted comment "+id)
+
+	m.contains(m.fails("comment", "list", "OZX-99"), "not found")
+	m.contains(m.fails("comment", "add", "OZX-1", "   "), "nothing to say")
+	m.contains(m.fails("comment", "rm", "OZX-1", "not-a-uuid", "--yes"), "is not a comment id")
+	m.contains(m.fails("comment", "nonsense", "OZX-1"), "unknown `mf comment` subcommand")
+}
+
+// Memories recorded against an issue are part of what `mf issue show` reports,
+// so whoever picks the issue up sees the knowledge already written down.
+func TestIntegrationMemoriesAppearInIssueShow(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("OZX", "OZX Game")
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Boss stuck in wall")
+	m.run("memory", "add", "--title", "Root cause of OZX-1",
+		"--content", "The collider is rebuilt a frame late.", "--issue", "OZX-1")
+	// A memory on another issue must not show up here.
+	m.run("issue", "create", "OZX", "--type", "bug", "--title", "Unrelated")
+	m.run("memory", "add", "--title", "Something else", "--content", "Unrelated note.", "--issue", "OZX-2")
+
+	out := m.run("issue", "show", "OZX-1")
+	m.contains(out, "Memories:", "Root cause of OZX-1", "recall")
+	m.omits(out, "Something else")
+
+	data := m.json("issue", "show", "OZX-1")
+	memories, ok := data["memories"].([]any)
+	if !ok || len(memories) != 1 {
+		t.Fatalf("issue show --json memories = %v", data["memories"])
+	}
 }
 
 // --- memories --------------------------------------------------------------

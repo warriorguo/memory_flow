@@ -227,6 +227,7 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 	tagRepo := repository.NewTagRepo(db)
 	depRepo := repository.NewDependencyRepo(db)
 	assetRepo := repository.NewAssetRepo(db, repository.NewDBContentStore())
+	commentRepo := repository.NewCommentRepo(db)
 
 	projectSvc := service.NewProjectService(projectRepo)
 	issueSvc := service.NewIssueService(issueRepo, projectRepo, issueHistoryRepo)
@@ -234,6 +235,7 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 	memorySvc := service.NewMemoryService(memoryRepo)
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, maxAssetBytes())
+	commentSvc := service.NewCommentService(commentRepo)
 
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
@@ -246,6 +248,7 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, syncToken),
 		handler.NewAssetHandler(assetSvc, issueSvc, resolver),
+		handler.NewCommentHandler(commentSvc, resolver),
 	)
 }
 

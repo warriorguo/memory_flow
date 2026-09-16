@@ -411,30 +411,10 @@ func printAssets(e *env, assets []model.IssueAsset) {
 // withAssets splices the asset list into an issue's JSON envelope, so
 // `mf issue show --json` describes the issue and its attachments in one object.
 func withAssets(raw []byte, assets []model.IssueAsset) []byte {
-	var env map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return raw
-	}
-	var data map[string]json.RawMessage
-	if err := json.Unmarshal(env["data"], &data); err != nil {
-		return raw
-	}
 	if assets == nil {
 		assets = []model.IssueAsset{}
 	}
-	encoded, err := json.Marshal(assets)
-	if err != nil {
-		return raw
-	}
-	data["assets"] = encoded
-	if env["data"], err = json.Marshal(data); err != nil {
-		return raw
-	}
-	merged, err := json.Marshal(env)
-	if err != nil {
-		return raw
-	}
-	return merged
+	return spliceIssueData(raw, "assets", assets)
 }
 
 func humanSize(n int64) string {
