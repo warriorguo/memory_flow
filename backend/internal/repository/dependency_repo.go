@@ -53,8 +53,19 @@ func (r *DependencyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// ListByIssueID returns every dependency the issue takes part in, on either
+// side, with both ends summarized. The joins cannot drop rows: both columns
+// reference issues(id) with ON DELETE CASCADE.
 func (r *DependencyRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.IssueDependency, error) {
-	query := fmt.Sprintf(`SELECT %s FROM issue_dependencies WHERE source_issue_id = $1 OR target_issue_id = $1 ORDER BY created_at`, depColumns)
+	query := `
+		SELECT d.id, d.source_issue_id, d.target_issue_id, d.type, d.severity, d.created_at,
+		       s.issue_key, s.title, s.status, s.priority,
+		       t.issue_key, t.title, t.status, t.priority
+		FROM issue_dependencies d
+		JOIN issues s ON s.id = d.source_issue_id
+		JOIN issues t ON t.id = d.target_issue_id
+		WHERE d.source_issue_id = $1 OR d.target_issue_id = $1
+		ORDER BY d.created_at`
 	rows, err := r.db.Query(ctx, query, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("list dependencies: %w", err)
@@ -64,9 +75,14 @@ func (r *DependencyRepo) ListByIssueID(ctx context.Context, issueID uuid.UUID) (
 	var deps []model.IssueDependency
 	for rows.Next() {
 		var d model.IssueDependency
-		if err := rows.Scan(&d.ID, &d.SourceIssueID, &d.TargetIssueID, &d.Type, &d.Severity, &d.CreatedAt); err != nil {
+		var src, tgt model.IssueRef
+		if err := rows.Scan(&d.ID, &d.SourceIssueID, &d.TargetIssueID, &d.Type, &d.Severity, &d.CreatedAt,
+			&src.IssueKey, &src.Title, &src.Status, &src.Priority,
+			&tgt.IssueKey, &tgt.Title, &tgt.Status, &tgt.Priority); err != nil {
 			return nil, fmt.Errorf("scan dependency: %w", err)
 		}
+		src.ID, tgt.ID = d.SourceIssueID, d.TargetIssueID
+		d.SourceIssue, d.TargetIssue = &src, &tgt
 		deps = append(deps, d)
 	}
 	return deps, rows.Err()

@@ -114,6 +114,20 @@ type IssueDependency struct {
 	Type          string    `json:"type"`     // "depends_on" or "blocks"
 	Severity      string    `json:"severity"` // "critical" or "recommended"
 	CreatedAt     time.Time `json:"created_at"`
+	// SourceIssue and TargetIssue summarize the two ends, so a reader can show
+	// "depends on ORT-50" without fetching each issue. Only the list endpoint
+	// fills them.
+	SourceIssue *IssueRef `json:"source_issue,omitempty"`
+	TargetIssue *IssueRef `json:"target_issue,omitempty"`
+}
+
+// IssueRef is the summary of an issue shown where another issue links to it.
+type IssueRef struct {
+	ID       uuid.UUID `json:"id"`
+	IssueKey string    `json:"issue_key"`
+	Title    string    `json:"title"`
+	Status   string    `json:"status"`
+	Priority string    `json:"priority"`
 }
 
 // DependencyNode represents a node in the dependency tree.

@@ -12,6 +12,7 @@ import PriorityBadge from '../../components/PriorityBadge';
 import Markdown from '../../components/Markdown';
 import AssetPanel from '../../components/AssetPanel';
 import CommentPanel from '../../components/CommentPanel';
+import DependencyPanel from '../../components/DependencyPanel';
 import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
@@ -160,6 +161,8 @@ const IssueDetail: React.FC = () => {
       </Card>
 
       <AssetPanel issueKey={id!} />
+
+      <DependencyPanel issueKey={id!} issueId={issue.id} />
 
       {memories && memories.data.length > 0 && (
         <Card title="关联 Memory" style={{ marginTop: 16 }}>

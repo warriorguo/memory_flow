@@ -129,13 +129,18 @@ func (e *env) printDeps(key string, deps []model.IssueDependency) error {
 	resolved := map[uuid.UUID]*model.Issue{self.ID: self}
 	rows := make([][]string, 0, len(deps))
 	for _, dep := range deps {
-		otherID, relation := dep.TargetIssueID, dep.Type
+		otherID, otherRef, relation := dep.TargetIssueID, dep.TargetIssue, dep.Type
 		if dep.SourceIssueID != self.ID {
-			otherID = dep.SourceIssueID
+			otherID, otherRef = dep.SourceIssueID, dep.SourceIssue
 			relation = inverseRelation(dep.Type)
 		}
 
 		other, ok := resolved[otherID]
+		if !ok && otherRef != nil {
+			// Servers since MF-11 summarize both ends; older ones need a fetch.
+			other = &model.Issue{ID: otherID, IssueKey: otherRef.IssueKey, Title: otherRef.Title, Status: otherRef.Status}
+			resolved[otherID], ok = other, true
+		}
 		if !ok {
 			other, _, err = e.fetchIssue(otherID.String())
 			if err != nil {
