@@ -91,10 +91,13 @@ const projectUsage = `mf project — projects
   mf projects [--status active|paused|archived] [--name TEXT] [--limit N]
   mf project show <PROJECT_KEY>
   mf project create <KEY> --name "…" [--summary "…"] [--desc "…"|--desc-file FILE]
-                          [--design-principles "…"] [--git-url URL] [--cicd-url URL]
+                          [--design-principles "…"] [--git-url URL] [--cicd-url [LABEL=]URL]…
                           [--doc-url URL] [--owner ID]
   mf project update <PROJECT_KEY> [--name "…"] [--summary "…"] [--status active|paused|archived]
-                                  [--git-url URL] [--next-issue-number N] …
+                                  [--git-url URL] [--cicd-url [LABEL=]URL]… [--next-issue-number N] …
+
+  --cicd-url is repeatable, one per CI/CD app: --cicd-url server=URL --cicd-url admin=URL.
+  On update it replaces the whole list; --cicd-url "" clears it.
   mf project progress <PROJECT_KEY> [--trend <DAYS>]
   mf project archive <PROJECT_KEY>
 `

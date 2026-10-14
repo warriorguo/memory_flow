@@ -19,71 +19,80 @@ func NewProjectRepo(db database.DB) *ProjectRepo {
 	return &ProjectRepo{db: db}
 }
 
+// projectColumns is the select list scanProject expects, in order.
+const projectColumns = `id, key, name, summary, description, design_principles, git_url, cicd_url, cicd_links, doc_url, owner_id, status, next_issue_number, created_at, updated_at`
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+// scanProject reads one row of projectColumns, followed by any extra columns
+// the query appends (e.g. a window-function total).
+func scanProject(row scanner, extra ...any) (*model.Project, error) {
+	var p model.Project
+	var links *string
+	dest := append([]any{
+		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
+		&p.GitURL, &p.CICDURL, &links, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
+		&p.CreatedAt, &p.UpdatedAt,
+	}, extra...)
+	if err := row.Scan(dest...); err != nil {
+		return nil, err
+	}
+	p.CICDLinks = model.DecodeCICDLinks(links, p.CICDURL)
+	return &p, nil
+}
+
 func (r *ProjectRepo) Create(ctx context.Context, req model.CreateProjectRequest) (*model.Project, error) {
 	query := `
-		INSERT INTO projects (id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at`
+		INSERT INTO projects (id, key, name, summary, description, design_principles, git_url, cicd_url, cicd_links, doc_url, owner_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING ` + projectColumns
 
 	row := r.db.QueryRow(ctx, query,
 		uuid.New(), req.Key, req.Name, req.Summary, req.Description, req.DesignPrinciples,
-		req.GitURL, req.CICDURL, req.DocURL, req.OwnerID,
+		req.GitURL, req.CICDURL, model.EncodeCICDLinks(req.CICDLinks), req.DocURL, req.OwnerID,
 	)
 
-	var p model.Project
-	err := row.Scan(
-		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-		&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
-		&p.CreatedAt, &p.UpdatedAt,
-	)
+	p, err := scanProject(row)
 	if err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 func (r *ProjectRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Project, error) {
 	query := `
-		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at
+		SELECT ` + projectColumns + `
 		FROM projects WHERE id = $1`
 
 	row := r.db.QueryRow(ctx, query, id)
 
-	var p model.Project
-	err := row.Scan(
-		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-		&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
-		&p.CreatedAt, &p.UpdatedAt,
-	)
+	p, err := scanProject(row)
 	if err != nil {
 		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get project by id: %w", err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 func (r *ProjectRepo) GetByKey(ctx context.Context, key string) (*model.Project, error) {
 	query := `
-		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at
+		SELECT ` + projectColumns + `
 		FROM projects WHERE key = $1`
 
 	row := r.db.QueryRow(ctx, query, key)
 
-	var p model.Project
-	err := row.Scan(
-		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-		&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
-		&p.CreatedAt, &p.UpdatedAt,
-	)
+	p, err := scanProject(row)
 	if err != nil {
 		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get project by key: %w", err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]model.Project, int, error) {
@@ -116,7 +125,7 @@ func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]m
 	offset := (page - 1) * pageSize
 
 	query := fmt.Sprintf(`
-		SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at,
+		SELECT `+projectColumns+`,
 		       COUNT(*) OVER() AS total
 		FROM projects %s
 		ORDER BY updated_at DESC, created_at DESC, id DESC
@@ -132,16 +141,11 @@ func (r *ProjectRepo) List(ctx context.Context, filter model.ProjectFilter) ([]m
 	var projects []model.Project
 	var total int
 	for rows.Next() {
-		var p model.Project
-		err := rows.Scan(
-			&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-			&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
-			&p.CreatedAt, &p.UpdatedAt, &total,
-		)
+		p, err := scanProject(rows, &total)
 		if err != nil {
 			return nil, 0, fmt.Errorf("scan project: %w", err)
 		}
-		projects = append(projects, p)
+		projects = append(projects, *p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("iterate projects: %w", err)
@@ -185,6 +189,11 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 		args = append(args, *req.CICDURL)
 		argIdx++
 	}
+	if req.CICDLinks != nil {
+		setClauses = append(setClauses, fmt.Sprintf("cicd_links = $%d", argIdx))
+		args = append(args, model.EncodeCICDLinks(*req.CICDLinks))
+		argIdx++
+	}
 	if req.DocURL != nil {
 		setClauses = append(setClauses, fmt.Sprintf("doc_url = $%d", argIdx))
 		args = append(args, *req.DocURL)
@@ -215,23 +224,18 @@ func (r *ProjectRepo) Update(ctx context.Context, id uuid.UUID, req model.Update
 
 	query := fmt.Sprintf(`
 		UPDATE projects SET %s WHERE id = $%d
-		RETURNING id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at`,
-		strings.Join(setClauses, ", "), argIdx)
+		RETURNING %s`,
+		strings.Join(setClauses, ", "), argIdx, projectColumns)
 
 	row := r.db.QueryRow(ctx, query, args...)
-	var p model.Project
-	err := row.Scan(
-		&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-		&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
-		&p.CreatedAt, &p.UpdatedAt,
-	)
+	p, err := scanProject(row)
 	if err != nil {
 		if err == database.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("update project: %w", err)
 	}
-	return &p, nil
+	return p, nil
 }
 
 func (r *ProjectRepo) Archive(ctx context.Context, id uuid.UUID) error {

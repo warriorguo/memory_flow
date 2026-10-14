@@ -3,6 +3,7 @@ package mfcli
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
@@ -36,6 +37,17 @@ func cmdCtx(e *env, args []string) error {
 		rows = append(rows, []string{p.Key, p.Name, p.Status, truncate(deref(p.Summary), 90)})
 	}
 	table(e.out, []string{"KEY", "NAME", "STATUS", "SUMMARY"}, rows)
+
+	var links [][]string
+	for _, p := range projects {
+		for _, l := range p.CICDLinks {
+			links = append(links, []string{p.Key, dashStr(l.Label), l.URL})
+		}
+	}
+	if len(links) > 0 {
+		e.printf("\nCI/CD:\n\n")
+		table(e.out, []string{"KEY", "LABEL", "URL"}, links)
+	}
 	return nil
 }
 
@@ -104,7 +116,7 @@ func cmdProjectShow(e *env, args []string) error {
 	e.printf("%s  %s\n", p.Key, p.Name)
 	e.printf("  status        %s\n", p.Status)
 	e.printf("  git_url       %s\n", dash(p.GitURL))
-	e.printf("  cicd_url      %s\n", dash(p.CICDURL))
+	printCICDLinks(e, p.CICDLinks)
 	e.printf("  doc_url       %s\n", dash(p.DocURL))
 	e.printf("  owner         %s\n", dash(p.OwnerID))
 	// next_issue_number holds the last number handed out — the repository
@@ -131,7 +143,8 @@ func cmdProjectCreate(e *env, args []string) error {
 	descFile := fs.String("desc-file", "", "read description from file ('-' for stdin)")
 	principles := fs.String("design-principles", "", "design principles")
 	gitURL := fs.String("git-url", "", "repository URL")
-	cicdURL := fs.String("cicd-url", "", "CI/CD URL")
+	var cicd cicdLinksFlag
+	fs.Var(&cicd, "cicd-url", "CI/CD link, as URL or label=URL (repeatable)")
 	docURL := fs.String("doc-url", "", "documentation URL")
 	owner := fs.String("owner", "", "owner id")
 	pos, err := parseArgs(fs, args)
@@ -160,7 +173,11 @@ func cmdProjectCreate(e *env, args []string) error {
 	setIfNonEmpty(&req.Description, desc)
 	setIfNonEmpty(&req.DesignPrinciples, *principles)
 	setIfNonEmpty(&req.GitURL, *gitURL)
-	setIfNonEmpty(&req.CICDURL, *cicdURL)
+	if len(cicd) > 0 {
+		// cicd_url rides along for servers that predate cicd_links.
+		req.CICDLinks = cicd
+		setIfNonEmpty(&req.CICDURL, model.PrimaryCICDURL(cicd))
+	}
 	setIfNonEmpty(&req.DocURL, *docURL)
 	setIfNonEmpty(&req.OwnerID, *owner)
 
@@ -184,7 +201,8 @@ func cmdProjectUpdate(e *env, args []string) error {
 	descFile := fs.String("desc-file", "", "read description from file ('-' for stdin)")
 	principles := fs.String("design-principles", "", "design principles")
 	gitURL := fs.String("git-url", "", "repository URL")
-	cicdURL := fs.String("cicd-url", "", "CI/CD URL")
+	var cicd cicdLinksFlag
+	fs.Var(&cicd, "cicd-url", "CI/CD link, as URL or label=URL (repeatable; replaces the list, \"\" clears it)")
 	docURL := fs.String("doc-url", "", "documentation URL")
 	owner := fs.String("owner", "", "owner id")
 	status := fs.String("status", "", "active/paused/archived")
@@ -202,10 +220,19 @@ func cmdProjectUpdate(e *env, args []string) error {
 		Summary:          strPtr(fs, "summary", summary),
 		DesignPrinciples: strPtr(fs, "design-principles", principles),
 		GitURL:           strPtr(fs, "git-url", gitURL),
-		CICDURL:          strPtr(fs, "cicd-url", cicdURL),
 		DocURL:           strPtr(fs, "doc-url", docURL),
 		OwnerID:          strPtr(fs, "owner", owner),
 		Status:           strPtr(fs, "status", status),
+	}
+	if flagWasSet(fs, "cicd-url") {
+		links := []model.CICDLink(cicd)
+		if links == nil {
+			links = []model.CICDLink{}
+		}
+		// cicd_url rides along for servers that predate cicd_links.
+		primary := model.PrimaryCICDURL(links)
+		req.CICDLinks = &links
+		req.CICDURL = &primary
 	}
 	if flagWasSet(fs, "next-issue-number") {
 		req.NextIssueNumber = nextIssue
@@ -305,4 +332,61 @@ func setIfNonEmpty(field **string, value string) {
 	}
 	v := value
 	*field = &v
+}
+
+// cicdLinksFlag collects repeated --cicd-url values. Each is either a bare URL
+// or label=URL; an empty value adds nothing, so `--cicd-url ""` on update
+// clears the list.
+type cicdLinksFlag []model.CICDLink
+
+func (f *cicdLinksFlag) String() string { return "" }
+
+func (f *cicdLinksFlag) Set(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	*f = append(*f, parseCICDLink(v))
+	return nil
+}
+
+// parseCICDLink splits label=URL. The text before the first '=' counts as a
+// label only when it cannot be part of a URL, so a bare URL whose query string
+// contains '=' (https://ci/x?app=1) stays whole.
+func parseCICDLink(v string) model.CICDLink {
+	if i := strings.Index(v, "="); i > 0 && !strings.ContainsAny(v[:i], ":/?#&") {
+		return model.CICDLink{Label: strings.TrimSpace(v[:i]), URL: strings.TrimSpace(v[i+1:])}
+	}
+	return model.CICDLink{URL: v}
+}
+
+// printCICDLinks renders a project's CI/CD links under `mf project show`, one
+// per line, aligned with the other fields.
+func printCICDLinks(e *env, links []model.CICDLink) {
+	if len(links) == 0 {
+		e.printf("  cicd          -\n")
+		return
+	}
+	width := 0
+	for _, l := range links {
+		width = max(width, len(l.Label))
+	}
+	for i, l := range links {
+		name := "cicd"
+		if i > 0 {
+			name = ""
+		}
+		if width == 0 {
+			e.printf("  %-14s%s\n", name, l.URL)
+		} else {
+			e.printf("  %-14s%-*s  %s\n", name, width, dashStr(l.Label), l.URL)
+		}
+	}
+}
+
+func dashStr(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }

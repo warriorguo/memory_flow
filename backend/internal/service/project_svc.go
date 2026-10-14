@@ -31,6 +31,19 @@ func (s *ProjectService) Create(ctx context.Context, req model.CreateProjectRequ
 	if req.Name == "" {
 		return nil, fmt.Errorf("project name is required")
 	}
+	links := req.CICDLinks
+	if links == nil && req.CICDURL != nil {
+		links = model.CICDLinksFromURL(*req.CICDURL)
+	}
+	links, err := model.NormalizeCICDLinks(links)
+	if err != nil {
+		return nil, err
+	}
+	req.CICDLinks = links
+	req.CICDURL = nil
+	if primary := model.PrimaryCICDURL(links); primary != "" {
+		req.CICDURL = &primary
+	}
 	return s.repo.Create(ctx, req)
 }
 
@@ -49,6 +62,24 @@ func (s *ProjectService) List(ctx context.Context, filter model.ProjectFilter) (
 func (s *ProjectService) Update(ctx context.Context, id uuid.UUID, req model.UpdateProjectRequest) (*model.Project, error) {
 	if req.Status != nil && !validProjectStatuses[*req.Status] {
 		return nil, fmt.Errorf("invalid status: must be 'active', 'paused', or 'archived'")
+	}
+
+	// cicd_links and the legacy cicd_url are one value: whichever the caller
+	// sent, both columns are rewritten so cicd_url stays the first link.
+	if req.CICDLinks != nil || req.CICDURL != nil {
+		var links []model.CICDLink
+		if req.CICDLinks != nil {
+			links = *req.CICDLinks
+		} else {
+			links = model.CICDLinksFromURL(*req.CICDURL)
+		}
+		links, err := model.NormalizeCICDLinks(links)
+		if err != nil {
+			return nil, err
+		}
+		primary := model.PrimaryCICDURL(links)
+		req.CICDLinks = &links
+		req.CICDURL = &primary
 	}
 
 	if req.NextIssueNumber != nil {

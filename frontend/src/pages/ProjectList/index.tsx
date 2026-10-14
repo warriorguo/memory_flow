@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { listProjects, createProject, archiveProject } from '../../api/project';
 import type { ProjectFilter, CreateProjectRequest } from '../../types/project';
+import { CicdLinksField } from '../../components/CicdLinks';
 import dayjs from 'dayjs';
 
 const ProjectList: React.FC = () => {
@@ -145,9 +146,7 @@ const ProjectList: React.FC = () => {
           <Form.Item name="git_url" label="Git 地址">
             <Input />
           </Form.Item>
-          <Form.Item name="cicd_url" label="CI/CD 地址">
-            <Input />
-          </Form.Item>
+          <CicdLinksField />
           <Form.Item name="doc_url" label="文档地址">
             <Input />
           </Form.Item>

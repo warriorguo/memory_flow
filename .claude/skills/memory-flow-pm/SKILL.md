@@ -269,6 +269,19 @@ Optional: `--summary`, `--desc`/`--desc-file`, `--design-principles`, `--git-url
 
 `mf project update` also takes `--next-issue-number N` to bump the issue-key counter forward.
 
+A project can hold several CI/CD links, one per app it deploys. `--cicd-url` is
+repeatable and takes `label=URL` (or a bare URL for an unlabeled link):
+
+```bash
+mf project update APM --cicd-url server=https://cicd.local.playquota.com/apps/36 \
+                      --cicd-url admin=https://cicd.local.playquota.com/apps/38
+mf project update APM --cicd-url ""     # clear them
+```
+
+On update the given links replace the whole list. `mf project show` lists them
+under `cicd`, and `mf ctx` prints a `CI/CD:` table of every project's links —
+look there for the app to build instead of the project description.
+
 ---
 
 ## Progress

@@ -8,7 +8,7 @@ import (
 )
 
 func exportProjects(ctx context.Context, db database.DB) ([]model.Project, error) {
-	rows, err := db.Query(ctx, `SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at FROM projects`)
+	rows, err := db.Query(ctx, `SELECT id, key, name, summary, description, design_principles, git_url, cicd_url, cicd_links, doc_url, owner_id, status, next_issue_number, created_at, updated_at FROM projects`)
 	if err != nil {
 		return nil, err
 	}
@@ -16,11 +16,13 @@ func exportProjects(ctx context.Context, db database.DB) ([]model.Project, error
 	var out []model.Project
 	for rows.Next() {
 		var p model.Project
+		var links *string
 		if err := rows.Scan(&p.ID, &p.Key, &p.Name, &p.Summary, &p.Description, &p.DesignPrinciples,
-			&p.GitURL, &p.CICDURL, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
+			&p.GitURL, &p.CICDURL, &links, &p.DocURL, &p.OwnerID, &p.Status, &p.NextIssueNumber,
 			&p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
+		p.CICDLinks = model.DecodeCICDLinks(links, p.CICDURL)
 		out = append(out, p)
 	}
 	return out, rows.Err()

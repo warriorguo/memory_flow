@@ -124,9 +124,11 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 
 	// Parents before children to satisfy foreign keys.
 	for _, p := range s.Projects {
+		// A snapshot from a peer that predates cicd_links carries none; NULL
+		// makes this side read the links back from cicd_url.
 		apply(ctx, db, res, projectUpsert, p.ID,
 			p.ID, p.Key, p.Name, p.Summary, p.Description, p.DesignPrinciples,
-			p.GitURL, p.CICDURL, p.DocURL, p.OwnerID, p.Status, p.NextIssueNumber,
+			p.GitURL, p.CICDURL, model.EncodeCICDLinks(p.CICDLinks), p.DocURL, p.OwnerID, p.Status, p.NextIssueNumber,
 			ts(p.CreatedAt), ts(p.UpdatedAt))
 	}
 	for _, t := range s.Tags {
@@ -285,11 +287,12 @@ func apply(ctx context.Context, db database.DB, res *ImportResult, query string,
 // --- upsert statements (portable across PostgreSQL and SQLite) ---
 
 const projectUpsert = `
-INSERT INTO projects (id, key, name, summary, description, design_principles, git_url, cicd_url, doc_url, owner_id, status, next_issue_number, created_at, updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+INSERT INTO projects (id, key, name, summary, description, design_principles, git_url, cicd_url, cicd_links, doc_url, owner_id, status, next_issue_number, created_at, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 ON CONFLICT(id) DO UPDATE SET
   key=excluded.key, name=excluded.name, summary=excluded.summary, description=excluded.description,
   design_principles=excluded.design_principles, git_url=excluded.git_url, cicd_url=excluded.cicd_url,
+  cicd_links=excluded.cicd_links,
   doc_url=excluded.doc_url, owner_id=excluded.owner_id, status=excluded.status,
   next_issue_number=excluded.next_issue_number, updated_at=excluded.updated_at
 WHERE excluded.updated_at > projects.updated_at`

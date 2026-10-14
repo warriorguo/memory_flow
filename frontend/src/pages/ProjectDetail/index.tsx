@@ -8,6 +8,7 @@ import IssueListView from '../IssueList';
 import KanbanBoard from '../KanbanBoard';
 import ProgressDashboard from '../ProgressDashboard';
 import MemoryListView from '../MemoryList';
+import { CicdLinksField, CicdLinksView } from '../../components/CicdLinks';
 import dayjs from 'dayjs';
 
 const TAB_KEYS = ['overview', 'issues', 'kanban', 'progress', 'memory'] as const;
@@ -79,7 +80,7 @@ const ProjectDetail: React.FC = () => {
               {project.git_url ? <a href={project.git_url} target="_blank" rel="noreferrer">{project.git_url}</a> : '-'}
             </Descriptions.Item>
             <Descriptions.Item label="CI/CD 地址" span={2}>
-              {project.cicd_url ? <a href={project.cicd_url} target="_blank" rel="noreferrer">{project.cicd_url}</a> : '-'}
+              <CicdLinksView links={project.cicd_links} />
             </Descriptions.Item>
             <Descriptions.Item label="文档地址" span={2}>
               {project.doc_url ? <a href={project.doc_url} target="_blank" rel="noreferrer">{project.doc_url}</a> : '-'}
@@ -148,9 +149,7 @@ const ProjectDetail: React.FC = () => {
           <Form.Item name="git_url" label="Git 地址">
             <Input />
           </Form.Item>
-          <Form.Item name="cicd_url" label="CI/CD 地址">
-            <Input />
-          </Form.Item>
+          <CicdLinksField />
           <Form.Item name="doc_url" label="文档地址">
             <Input />
           </Form.Item>

@@ -15,13 +15,16 @@ type Project struct {
 	Description      *string   `json:"description"`
 	DesignPrinciples *string   `json:"design_principles"`
 	GitURL           *string   `json:"git_url"`
-	CICDURL          *string   `json:"cicd_url"`
-	DocURL           *string   `json:"doc_url"`
-	OwnerID          *string   `json:"owner_id"`
-	Status           string    `json:"status"`
-	NextIssueNumber  int       `json:"next_issue_number"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	// CICDURL is the legacy single-link field: it always mirrors the first
+	// entry of CICDLinks, so clients that predate CICDLinks keep working.
+	CICDURL         *string    `json:"cicd_url"`
+	CICDLinks       []CICDLink `json:"cicd_links"`
+	DocURL          *string    `json:"doc_url"`
+	OwnerID         *string    `json:"owner_id"`
+	Status          string     `json:"status"`
+	NextIssueNumber int        `json:"next_issue_number"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type Issue struct {
@@ -225,8 +228,10 @@ type CreateProjectRequest struct {
 	DesignPrinciples *string `json:"design_principles"`
 	GitURL           *string `json:"git_url"`
 	CICDURL          *string `json:"cicd_url"`
-	DocURL           *string `json:"doc_url"`
-	OwnerID          *string `json:"owner_id"`
+	// CICDLinks wins over CICDURL when both are given.
+	CICDLinks []CICDLink `json:"cicd_links"`
+	DocURL    *string    `json:"doc_url"`
+	OwnerID   *string    `json:"owner_id"`
 }
 
 type UpdateProjectRequest struct {
@@ -236,9 +241,12 @@ type UpdateProjectRequest struct {
 	DesignPrinciples *string `json:"design_principles"`
 	GitURL           *string `json:"git_url"`
 	CICDURL          *string `json:"cicd_url"`
-	DocURL           *string `json:"doc_url"`
-	OwnerID          *string `json:"owner_id"`
-	Status           *string `json:"status"`
+	// CICDLinks replaces the whole list (an empty list clears it); nil leaves
+	// it unchanged. It wins over CICDURL when both are given.
+	CICDLinks *[]CICDLink `json:"cicd_links"`
+	DocURL    *string     `json:"doc_url"`
+	OwnerID   *string     `json:"owner_id"`
+	Status    *string     `json:"status"`
 	// NextIssueNumber bumps the issue-key counter forward (e.g. to start a batch
 	// at a higher number). Guarded by the service: it may only increase, and must
 	// stay above the highest existing issue number.

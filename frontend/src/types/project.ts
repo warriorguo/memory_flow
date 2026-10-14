@@ -1,3 +1,9 @@
+// One CI/CD pipeline the project deploys through; label tells several apart.
+export interface CICDLink {
+  label: string;
+  url: string;
+}
+
 export interface Project {
   id: string;
   key: string;
@@ -6,7 +12,9 @@ export interface Project {
   description?: string;
   design_principles?: string;
   git_url?: string;
+  /** Legacy single link: mirrors cicd_links[0].url. */
   cicd_url?: string;
+  cicd_links: CICDLink[];
   doc_url?: string;
   owner_id?: string;
   status: string;
@@ -21,7 +29,7 @@ export interface CreateProjectRequest {
   description?: string;
   design_principles?: string;
   git_url?: string;
-  cicd_url?: string;
+  cicd_links?: CICDLink[];
   doc_url?: string;
   owner_id?: string;
 }
