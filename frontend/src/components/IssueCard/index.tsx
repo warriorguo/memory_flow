@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Typography } from 'antd';
 import StatusTag from '../StatusTag';
 import PriorityBadge from '../PriorityBadge';
+import { TagLabels } from '../TagLabel';
 import type { Issue } from '../../types/issue';
 
 const { Text } = Typography;
@@ -22,7 +23,10 @@ const IssueCard: React.FC<IssueCardProps> = ({ issue, onClick }) => (
       <Text type="secondary" style={{ fontSize: 12 }}>{issue.issue_key}</Text>
       <PriorityBadge priority={issue.priority} />
     </div>
-    <Text strong style={{ display: 'block', marginBottom: 4 }}>{issue.title}</Text>
+    <div style={{ marginBottom: 4 }}>
+      <Text strong>{issue.title}</Text>
+      <TagLabels tags={issue.tags} />
+    </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <StatusTag status={issue.status} />
       {issue.assignee_id && <Text type="secondary" style={{ fontSize: 12 }}>{issue.assignee_id}</Text>}

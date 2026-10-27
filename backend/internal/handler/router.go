@@ -71,6 +71,7 @@ func NewRouter(
 		// Tags
 		r.Get("/tags", tagHandler.List)
 		r.Post("/tags", tagHandler.Create)
+		r.Patch("/tags/{id}", tagHandler.Update)
 
 		// Memories
 		r.Get("/memories", memoryHandler.List)

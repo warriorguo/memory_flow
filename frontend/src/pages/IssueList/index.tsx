@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Select, Space, Card, Modal, Form, message } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, TagsOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { listIssues, createIssue } from '../../api/issue';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import TagSelector from '../../components/TagSelector';
-import type { IssueFilter, CreateIssueRequest, Issue } from '../../types/issue';
+import TagManager from '../../components/TagManager';
+import { TagLabels } from '../../components/TagLabel';
+import type { IssueFilter, CreateIssueRequest, Issue, Tag } from '../../types/issue';
 import type { IssueStatus, IssueType, Priority } from '../../types/common';
 import { ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import dayjs from 'dayjs';
@@ -23,6 +25,11 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<IssueFilter>({ page: 1, page_size: 20 });
   const [createOpen, setCreateOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+
+  // Clicking a label narrows the list to that tag (added to any already chosen).
+  const filterByTag = (tag: Tag) =>
+    setFilter((f) => (f.tag?.includes(tag.id) ? f : { ...f, tag: [...(f.tag ?? []), tag.id], page: 1 }));
   const [form] = Form.useForm();
 
   const { data, isLoading } = useQuery({
@@ -48,7 +55,10 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
       title: '标题',
       dataIndex: 'title',
       render: (title: string, record: Issue) => (
-        <a onClick={() => navigate(`/issues/${record.issue_key}`)}>{title}</a>
+        <span>
+          <a onClick={() => navigate(`/issues/${record.issue_key}`)}>{title}</a>
+          <TagLabels tags={record.tags} onTagClick={filterByTag} activeIds={filter.tag} />
+        </span>
       ),
     },
     {
@@ -113,11 +123,23 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
             onChange={(v) => setFilter((f) => ({ ...f, priority: v as Priority, page: 1 }))}
             options={Object.entries(PRIORITY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
           />
+          <TagSelector
+            placeholder="标签"
+            style={{ minWidth: 160 }}
+            value={filter.tag}
+            onChange={(v) => setFilter((f) => ({ ...f, tag: v.length ? v : undefined, page: 1 }))}
+          />
         </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          创建工作项
-        </Button>
+        <Space>
+          <Button icon={<TagsOutlined />} onClick={() => setTagsOpen(true)}>
+            管理标签
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            创建工作项
+          </Button>
+        </Space>
       </div>
+      <TagManager open={tagsOpen} onClose={() => setTagsOpen(false)} />
       <Table
         rowKey="id"
         columns={columns}
@@ -162,7 +184,7 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
             <Input />
           </Form.Item>
           <Form.Item name="tag_ids" label="标签">
-            <TagSelector />
+            <TagSelector allowCreate />
           </Form.Item>
         </Form>
       </Modal>

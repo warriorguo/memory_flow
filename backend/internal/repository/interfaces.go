@@ -56,6 +56,9 @@ type TagRepository interface {
 	Create(ctx context.Context, req model.CreateTagRequest) (*model.Tag, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Tag, error)
 	List(ctx context.Context) ([]model.Tag, error)
+	GetByName(ctx context.Context, name string) (*model.Tag, error)
+	Update(ctx context.Context, id uuid.UUID, req model.UpdateTagRequest) (*model.Tag, error)
+	GetByIssueIDs(ctx context.Context, issueIDs []uuid.UUID) (map[uuid.UUID][]model.Tag, error)
 	AddToIssue(ctx context.Context, issueID, tagID uuid.UUID) error
 	RemoveFromIssue(ctx context.Context, issueID, tagID uuid.UUID) error
 	GetByIssueID(ctx context.Context, issueID uuid.UUID) ([]model.Tag, error)

@@ -24,6 +24,8 @@ type env struct {
 	out    io.Writer
 	errOut io.Writer
 	asJSON bool
+	// color enables ANSI colors (tag labels) — only when writing to a terminal.
+	color bool
 	// actor names whoever is running the command. It authors comments and
 	// identifies the reader whose unread count `mf issue show` reports. There is
 	// no login, so this is a convention, not an authenticated identity.
@@ -53,13 +55,34 @@ func Main(args []string, stdout, stderr io.Writer) int {
 
 	client := NewClient(opts.url, opts.timeout)
 	client.NoCache = opts.refresh
-	e := &env{client: client, out: stdout, errOut: stderr, asJSON: opts.asJSON, actor: resolveActor(opts.actor)}
+	e := &env{client: client, out: stdout, errOut: stderr, asJSON: opts.asJSON, actor: resolveActor(opts.actor), color: wantsColor(stdout)}
 
 	if err := dispatch(e, rest); err != nil {
 		fmt.Fprintln(stderr, "mf:", err)
 		return 1
 	}
 	return 0
+}
+
+// wantsColor reports whether out is a terminal that should get ANSI colors.
+// NO_COLOR (https://no-color.org) and TERM=dumb turn it off.
+func wantsColor(out io.Writer) bool {
+	f, ok := out.(*os.File)
+	if !ok || !isTerminal(f) {
+		return false
+	}
+	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
+}
+
+// stringsFlag is a repeatable string flag: --tag a --tag b.
+type stringsFlag []string
+
+func (f *stringsFlag) String() string { return strings.Join(*f, ",") }
+func (f *stringsFlag) Set(v string) error {
+	if v = strings.TrimSpace(v); v != "" {
+		*f = append(*f, v)
+	}
+	return nil
 }
 
 // Version is stamped at build time via -ldflags.
@@ -323,6 +346,8 @@ func dispatchTag(e *env, args []string) error {
 		return cmdTagList(e, args[1:])
 	case "create", "add":
 		return cmdTagCreate(e, args[1:])
+	case "update", "edit":
+		return cmdTagUpdate(e, args[1:])
 	default:
 		return unknownf("unknown `mf tag` subcommand %q", args[0])
 	}

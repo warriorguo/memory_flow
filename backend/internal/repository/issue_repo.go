@@ -124,9 +124,10 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 		args = append(args, "%"+escapeLike(*filter.Keyword)+"%")
 		argIdx++
 	}
-	if filter.TagID != nil {
+	// One subquery per tag: an issue must carry all of them.
+	for _, tagID := range filter.TagIDs {
 		conditions = append(conditions, fmt.Sprintf("id IN (SELECT issue_id FROM issue_tag_rel WHERE tag_id = $%d)", argIdx))
-		args = append(args, *filter.TagID)
+		args = append(args, tagID)
 		argIdx++
 	}
 

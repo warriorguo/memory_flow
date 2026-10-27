@@ -139,6 +139,9 @@ type MockTagRepo struct {
 	CreateFn           func(ctx context.Context, req model.CreateTagRequest) (*model.Tag, error)
 	GetByIDFn          func(ctx context.Context, id uuid.UUID) (*model.Tag, error)
 	ListFn             func(ctx context.Context) ([]model.Tag, error)
+	GetByNameFn        func(ctx context.Context, name string) (*model.Tag, error)
+	UpdateFn           func(ctx context.Context, id uuid.UUID, req model.UpdateTagRequest) (*model.Tag, error)
+	GetByIssueIDsFn    func(ctx context.Context, issueIDs []uuid.UUID) (map[uuid.UUID][]model.Tag, error)
 	AddToIssueFn       func(ctx context.Context, issueID, tagID uuid.UUID) error
 	RemoveFromIssueFn  func(ctx context.Context, issueID, tagID uuid.UUID) error
 	GetByIssueIDFn     func(ctx context.Context, issueID uuid.UUID) ([]model.Tag, error)
@@ -155,6 +158,18 @@ func (m *MockTagRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Tag, er
 }
 func (m *MockTagRepo) List(ctx context.Context) ([]model.Tag, error) {
 	return m.ListFn(ctx)
+}
+func (m *MockTagRepo) GetByName(ctx context.Context, name string) (*model.Tag, error) {
+	return m.GetByNameFn(ctx, name)
+}
+func (m *MockTagRepo) Update(ctx context.Context, id uuid.UUID, req model.UpdateTagRequest) (*model.Tag, error) {
+	return m.UpdateFn(ctx, id, req)
+}
+func (m *MockTagRepo) GetByIssueIDs(ctx context.Context, issueIDs []uuid.UUID) (map[uuid.UUID][]model.Tag, error) {
+	if m.GetByIssueIDsFn == nil {
+		return map[uuid.UUID][]model.Tag{}, nil
+	}
+	return m.GetByIssueIDsFn(ctx, issueIDs)
 }
 func (m *MockTagRepo) AddToIssue(ctx context.Context, issueID, tagID uuid.UUID) error {
 	return m.AddToIssueFn(ctx, issueID, tagID)

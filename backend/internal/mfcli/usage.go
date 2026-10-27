@@ -27,7 +27,7 @@ Commands:
   memories                Search memories
   memory …                add | search | show | update | rm
   tags                    List tags
-  tag create <NAME>       Create a tag
+  tag …                   create | update  (colored labels; filter with 'mf issues --tag')
 
 Global flags (accepted anywhere in the command line):
   --json                  Print the raw API response instead of formatted text
@@ -52,8 +52,10 @@ Examples:
 const issueUsage = `mf issue — bugs and requirements
 
   mf issue list <PROJECT_KEY> [--status S] [--type bug|requirement] [--priority P0|P1|P2]
-                              [--assignee ID] [--keyword TEXT] [--all] [--limit N] [--page N]
+                              [--assignee ID] [--keyword TEXT] [--tag NAME]… [--all] [--limit N] [--page N]
       Open issues only by default; --all or an explicit --status includes done/closed/rejected.
+      Tags follow each title as [name] (colored on a terminal). --tag is repeatable
+      and every given tag must match: --tag room --tag enemy-ai.
 
   mf issue show <ISSUE_KEY> [--deps] [--history] [--comments]
       Also lists the issue's assets, its recorded memories, and whether anyone
@@ -61,7 +63,8 @@ const issueUsage = `mf issue — bugs and requirements
       marks it read.
   mf issue create <PROJECT_KEY> --type <bug|requirement> --title "…" [--desc "…"|--desc-file FILE]
                                 [--priority P1] [--assignee ID] [--source S] [--version V]
-                                [--git-url URL] [--pr-url URL] [--doc-url URL]
+                                [--git-url URL] [--pr-url URL] [--doc-url URL] [--tag NAME]…
+      --tag is repeatable; tags that do not exist yet are created with a palette color.
   mf issue update <ISSUE_KEY> [--title "…"] [--desc "…"|--desc-file FILE] [--priority P0]
                               [--assignee ID] [--type T] [--git-url URL] [--pr-url URL] …
   mf issue status <ISSUE_KEY> <STATUS> [--direct]
@@ -170,10 +173,18 @@ const memoryUsage = `mf memory — recorded context
 
 const tagUsage = `mf tag — tags
 
-  mf tags                                List every tag
+  mf tags                                List every tag with its color
   mf tag create <NAME> [--color '#1890ff']
+  mf tag update <NAME> [--color '#1890ff'] [--name NEW_NAME]
+  mf issue create <PROJECT_KEY> … --tag NAME [--tag NAME]…
   mf issue tag <ISSUE_KEY> <NAME>…       Attach tags, creating missing ones
   mf issue untag <ISSUE_KEY> <NAME>
+  mf issues <PROJECT_KEY> --tag NAME [--tag NAME]…   Issues carrying every given tag
+
+Every tag has a color: one left out is picked from a fixed palette, favoring
+colors few tags use yet. Names match case-insensitively everywhere. Issue
+lists show tags after the title — [room] [enemy-ai] — colored on a terminal
+(set NO_COLOR to turn that off).
 `
 
 const workflowUsage = `Issue workflow

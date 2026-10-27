@@ -21,6 +21,8 @@ func cmdIssueList(e *env, args []string) error {
 	priority := fs.String("priority", "", "P0/P1/P2")
 	assignee := fs.String("assignee", "", "filter by assignee id")
 	keyword := fs.String("keyword", "", "search titles and descriptions")
+	var tags stringsFlag
+	fs.Var(&tags, "tag", "only issues carrying this tag (repeatable; all must match)")
 	all := fs.Bool("all", false, "include done/closed/rejected issues")
 	limit := fs.Int("limit", 50, "max issues to show")
 	page := fs.Int("page", 1, "page number")
@@ -41,7 +43,7 @@ func cmdIssueList(e *env, args []string) error {
 	}
 
 	var issues []model.Issue
-	raw, err := e.client.get("/api/v1/projects/"+pos[0]+"/issues"+query(map[string]string{
+	q := withRepeated(query(map[string]string{
 		"status":      *status,
 		"type":        *issueType,
 		"priority":    *priority,
@@ -49,7 +51,8 @@ func cmdIssueList(e *env, args []string) error {
 		"keyword":     *keyword,
 		"page":        strconv.Itoa(*page),
 		"page_size":   strconv.Itoa(pageSize),
-	}), &issues)
+	}), "tag", tags)
+	raw, err := e.client.get("/api/v1/projects/"+pos[0]+"/issues"+q, &issues)
 	if err != nil {
 		return err
 	}
@@ -81,7 +84,7 @@ func cmdIssueList(e *env, args []string) error {
 		return nil
 	}
 
-	table(e.out, issueHeader, issueRows(shown))
+	e.issueTable(shown)
 	switch {
 	case truncated:
 		e.printf("\nshowing %d (--limit) of %d matching; %d issues in project\n", len(shown), len(issues), total)
@@ -198,6 +201,8 @@ func cmdIssueCreate(e *env, args []string) error {
 	gitURL := fs.String("git-url", "", "commit or PR URL")
 	prURL := fs.String("pr-url", "", "pull request URL")
 	docURL := fs.String("doc-url", "", "documentation URL")
+	var tags stringsFlag
+	fs.Var(&tags, "tag", "tag name (repeatable); missing tags are created")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
@@ -223,16 +228,33 @@ func cmdIssueCreate(e *env, args []string) error {
 	setIfNonEmpty(&req.GitURL, *gitURL)
 	setIfNonEmpty(&req.PRURL, *prURL)
 	setIfNonEmpty(&req.DocURL, *docURL)
+	req.Tags = tags
 
 	var issue model.Issue
 	raw, err := e.client.post("/api/v1/projects/"+pos[0]+"/issues", req, &issue)
 	if err != nil {
 		return err
 	}
+	// A server that predates tags-on-create ignores the field; tag the issue
+	// the old way so the flag works against either.
+	if len(tags) > 0 && len(issue.Tags) == 0 {
+		for _, name := range tags {
+			tag, err := e.findOrCreateTag(name, "")
+			if err != nil {
+				return fmt.Errorf("created %s, but tagging failed: %w", issue.IssueKey, err)
+			}
+			if _, err := e.client.post("/api/v1/issues/"+issue.IssueKey+"/tags", model.AddTagRequest{TagID: tag.ID}, nil); err != nil {
+				return fmt.Errorf("created %s, but tagging failed: %w", issue.IssueKey, err)
+			}
+		}
+		if refreshed, fresh, err := e.fetchIssue(issue.IssueKey); err == nil {
+			issue, raw = *refreshed, fresh
+		}
+	}
 	if e.emitJSON(raw) {
 		return nil
 	}
-	e.printf("created %s  [%s] %s %s\n", issue.IssueKey, issue.Type, issue.Priority, issue.Title)
+	e.printf("created %s  [%s] %s %s%s\n", issue.IssueKey, issue.Type, issue.Priority, issue.Title, e.tagLabels(issue.Tags))
 	return nil
 }
 

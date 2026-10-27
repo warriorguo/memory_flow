@@ -3,7 +3,12 @@ import type { Issue, CreateIssueRequest, UpdateIssueRequest, IssueFilter, IssueH
 import type { PaginatedResponse, ApiResponse } from '../types/common';
 
 export const listIssues = async (projectId: string, filter: IssueFilter = {}): Promise<PaginatedResponse<Issue>> => {
-  const { data } = await client.get(`/projects/${projectId}/issues`, { params: filter });
+  // indexes: null sends repeated keys (tag=a&tag=b), not tag[]=a, which is
+  // what the API reads for multi-tag filtering.
+  const { data } = await client.get(`/projects/${projectId}/issues`, {
+    params: filter,
+    paramsSerializer: { indexes: null },
+  });
   return data;
 };
 

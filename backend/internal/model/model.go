@@ -279,6 +279,10 @@ type CreateIssueRequest struct {
 	GitURL      *string `json:"git_url"`
 	PRURL       *string `json:"pr_url"`
 	DocURL      *string `json:"doc_url"`
+	// TagIDs attaches existing tags by id; Tags attaches tags by name, creating
+	// any that do not exist yet (the same rule `mf issue tag` follows).
+	TagIDs []uuid.UUID `json:"tag_ids,omitempty"`
+	Tags   []string    `json:"tags,omitempty"`
 }
 
 type UpdateIssueRequest struct {
@@ -292,6 +296,8 @@ type UpdateIssueRequest struct {
 	GitURL      *string `json:"git_url"`
 	PRURL       *string `json:"pr_url"`
 	DocURL      *string `json:"doc_url"`
+	// TagIDs, when present, replaces the issue's tag set; absent leaves it alone.
+	TagIDs *[]uuid.UUID `json:"tag_ids,omitempty"`
 }
 
 type TransitionStatusRequest struct {
@@ -328,6 +334,12 @@ type UpdateMemoryRequest struct {
 
 type CreateTagRequest struct {
 	Name  string  `json:"name"`
+	Color *string `json:"color"`
+}
+
+// UpdateTagRequest renames or recolors a tag; nil fields stay unchanged.
+type UpdateTagRequest struct {
+	Name  *string `json:"name"`
 	Color *string `json:"color"`
 }
 
@@ -382,9 +394,10 @@ type IssueFilter struct {
 	AssigneeID *string
 	CreatorID  *string
 	Keyword    *string `json:"keyword"`
-	TagID      *string `json:"tag"`
-	Page       int
-	PageSize   int
+	// TagIDs narrows to issues carrying every one of these tags (AND).
+	TagIDs   []uuid.UUID
+	Page     int
+	PageSize int
 }
 
 type MemoryFilter struct {

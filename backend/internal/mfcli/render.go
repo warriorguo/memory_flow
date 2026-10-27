@@ -3,10 +3,12 @@ package mfcli
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
+	"unicode/utf8"
 
 	"github.com/warriorguo/memory_flow/backend/internal/model"
 )
@@ -56,13 +58,14 @@ func shortTime(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
 }
 
-// issueRows renders the standard issue table: Key | Title | Type | Priority | Status | Assignee.
-func issueRows(issues []model.Issue) [][]string {
+// issueRows renders the standard issue table: Key | Title | Type | Priority |
+// Status | Assignee. Tags follow the title, GitHub-style, via labels.
+func issueRows(issues []model.Issue, labels func([]model.Tag) string) [][]string {
 	rows := make([][]string, 0, len(issues))
 	for _, issue := range issues {
 		rows = append(rows, []string{
 			issue.IssueKey,
-			truncate(issue.Title, 60),
+			truncate(issue.Title, 60) + labels(issue.Tags),
 			issue.Type,
 			issue.Priority,
 			issue.Status,
@@ -73,6 +76,88 @@ func issueRows(issues []model.Issue) [][]string {
 }
 
 var issueHeader = []string{"KEY", "TITLE", "TYPE", "PRI", "STATUS", "ASSIGNEE"}
+
+// issueTable prints issues in the standard table, coloring tag labels when
+// writing to a terminal.
+func (e *env) issueTable(issues []model.Issue) {
+	rows := issueRows(issues, e.tagLabels)
+	if e.color {
+		ansiTable(e.out, issueHeader, rows)
+		return
+	}
+	table(e.out, issueHeader, rows)
+}
+
+// tagLabels renders tags for the end of a title: " [room] [enemy-ai]" as plain
+// text, or as labels filled with each tag's color on a color terminal.
+func (e *env) tagLabels(tags []model.Tag) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, t := range tags {
+		b.WriteByte(' ')
+		if e.color {
+			b.WriteString(colorLabel(deref(t.Color), " "+t.Name+" "))
+		} else {
+			b.WriteString("[" + t.Name + "]")
+		}
+	}
+	return b.String()
+}
+
+// colorLabel paints text on the given background with whichever of black or
+// white reads better on it (the same rule the web UI uses). An unparseable
+// color falls back to brackets so the label is still visible.
+func colorLabel(background, text string) string {
+	r, g, b, ok := model.TagRGB(background)
+	if !ok {
+		return "[" + strings.TrimSpace(text) + "]"
+	}
+	fg := "30" // black
+	if model.TagTextColor(background) == "#ffffff" {
+		fg = "97" // bright white
+	}
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm\x1b[%sm%s\x1b[0m", r, g, b, fg, text)
+}
+
+var ansiEscape = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// visibleLen is a cell's width once ANSI color codes are stripped, counted in
+// runes like tabwriter does.
+func visibleLen(s string) int {
+	return utf8.RuneCountInString(ansiEscape.ReplaceAllString(s, ""))
+}
+
+// ansiTable is table for cells that contain color codes: tabwriter would count
+// the invisible escape bytes as width and misalign every column after them.
+func ansiTable(w io.Writer, header []string, rows [][]string) {
+	all := rows
+	if len(header) > 0 {
+		all = append([][]string{header}, rows...)
+	}
+	var widths []int
+	for _, row := range all {
+		for i, cell := range row {
+			if i >= len(widths) {
+				widths = append(widths, 0)
+			}
+			if n := visibleLen(cell); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+	for _, row := range all {
+		var b strings.Builder
+		for i, cell := range row {
+			b.WriteString(cell)
+			if i < len(row)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-visibleLen(cell)+2))
+			}
+		}
+		fmt.Fprintln(w, b.String())
+	}
+}
 
 // printIssue renders a single issue in full, including its description.
 func printIssue(w io.Writer, issue *model.Issue) {

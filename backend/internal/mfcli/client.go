@@ -383,6 +383,22 @@ func query(pairs map[string]string) string {
 	return "?" + values.Encode()
 }
 
+// withRepeated appends a parameter given several times (`tag=a&tag=b`) to a
+// query string built by query().
+func withRepeated(q, key string, values []string) string {
+	v := url.Values{}
+	for _, s := range values {
+		v.Add(key, s)
+	}
+	if len(v) == 0 {
+		return q
+	}
+	if q == "" {
+		return "?" + v.Encode()
+	}
+	return q + "&" + v.Encode()
+}
+
 // --- endpoint file & cache -------------------------------------------------
 
 func memoryFlowDir() string {

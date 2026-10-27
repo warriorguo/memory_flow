@@ -11,3 +11,8 @@ export const createTag = async (name: string, color?: string): Promise<Tag> => {
   const { data } = await client.post<ApiResponse<Tag>>('/tags', { name, color });
   return data.data;
 };
+
+export const updateTag = async (id: string, req: { name?: string; color?: string }): Promise<Tag> => {
+  const { data } = await client.patch<ApiResponse<Tag>>(`/tags/${encodeURIComponent(id)}`, req);
+  return data.data;
+};

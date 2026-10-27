@@ -80,12 +80,16 @@ mf issues MF --priority P0
 mf issues MF --type bug --assignee andrew
 mf issues MF --keyword "atlas export"
 mf issues MF --all                    # include done/closed/rejected
+mf issues OZX --tag room              # only issues tagged room
+mf issues OZX --tag room --tag enemy-ai   # tagged room AND enemy-ai
 ```
 
 Filters: `--status`, `--type` (bug/requirement), `--priority` (P0/P1/P2),
-`--assignee`, `--keyword`, `--all`, `--limit`, `--page`.
+`--assignee`, `--keyword`, `--tag` (repeatable, all must match), `--all`,
+`--limit`, `--page`.
 
 Output is already the table to present: Key | Title | Type | Priority | Status | Assignee.
+Tags follow the title as `[room] [enemy-ai]` (colored labels on a terminal).
 
 ### Show
 
@@ -148,6 +152,12 @@ EOF
 ```
 
 Required: `--type` (bug/requirement), `--title`.
+
+Tag it as you file it with `--tag` (repeatable; missing tags are created):
+
+```bash
+mf issue create OZX --type bug --title "第三关 Boss 卡墙" --tag room --tag enemy-ai
+```
 Optional: `--desc`/`--desc-file`, `--priority` (default P2), `--assignee`,
 `--source`, `--version`, `--git-url`, `--pr-url`, `--doc-url`.
 
@@ -447,11 +457,19 @@ point of the flag is that a human's note gets read, not marked read.
 ## Tags
 
 ```bash
-mf tags
+mf tags                                  # every tag with its color
 mf tag create frontend --color '#1890ff'
+mf tag update frontend --color '#0e8a16' --name web   # recolor / rename
+mf issue create MF --type bug --title "…" --tag frontend --tag backend
 mf issue tag MF-1 frontend backend      # creates any tag that doesn't exist yet
 mf issue untag MF-1 frontend
+mf issues MF --tag frontend             # filter; repeat --tag to AND them
 ```
+
+Every tag has a color — leave `--color` off and one is picked from a palette.
+Names match case-insensitively. Tags are the business dimension (area, system,
+feature) that type/priority/status cannot express; reuse existing tags (`mf tags`)
+before inventing near-duplicates.
 
 ---
 
@@ -479,7 +497,7 @@ mf issue untag MF-1 frontend
 | Assets | `mf asset add\|list\|get\|replace\|rm <ISSUE_KEY> …` |
 | Pull every asset | `mf asset get <KEY> --all -o <DIR>` |
 | Memories | `mf memory add\|search\|show\|update\|rm …` |
-| Tags | `mf tags` · `mf tag create` · `mf issue tag\|untag` |
+| Tags | `mf tags` · `mf tag create\|update` · `mf issue tag\|untag` · `mf issues <KEY> --tag T` |
 | Help | `mf help [issue\|project\|asset\|comment\|memory\|tag\|workflow]` |
 
 Every command accepts an issue key (`MF-1`) or project key (`MF`) wherever an

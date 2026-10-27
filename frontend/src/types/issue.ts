@@ -61,6 +61,8 @@ export interface UpdateIssueRequest {
   git_url?: string;
   pr_url?: string;
   doc_url?: string;
+  // Present: replaces the issue's tag set. Absent: tags stay as they are.
+  tag_ids?: string[];
 }
 
 export interface IssueFilter {
@@ -69,7 +71,8 @@ export interface IssueFilter {
   priority?: Priority;
   assignee_id?: string;
   creator_id?: string;
-  tag?: string;
+  // Tag ids or names; an issue must carry every one (AND).
+  tag?: string[];
   keyword?: string;
   page?: number;
   page_size?: number;

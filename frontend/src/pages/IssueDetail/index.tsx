@@ -13,6 +13,8 @@ import Markdown from '../../components/Markdown';
 import AssetPanel from '../../components/AssetPanel';
 import CommentPanel from '../../components/CommentPanel';
 import DependencyPanel from '../../components/DependencyPanel';
+import TagSelector from '../../components/TagSelector';
+import { TagLabels } from '../../components/TagLabel';
 import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
@@ -122,7 +124,20 @@ const IssueDetail: React.FC = () => {
         />
       )}
 
-      <Card title={<span>{issue.issue_key} - {issue.title}</span>} extra={<Button icon={<EditOutlined />} onClick={() => { form.setFieldsValue(issue); setEditOpen(true); }}>编辑</Button>}>
+      <Card
+        title={<span>{issue.issue_key} - {issue.title}<TagLabels tags={issue.tags} /></span>}
+        extra={
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => {
+              form.setFieldsValue({ ...issue, tag_ids: (issue.tags ?? []).map((t) => t.id) });
+              setEditOpen(true);
+            }}
+          >
+            编辑
+          </Button>
+        }
+      >
         <Descriptions column={2} bordered>
           <Descriptions.Item label="类型">{issue.type === 'requirement' ? '需求' : '缺陷'}</Descriptions.Item>
           <Descriptions.Item label="优先级"><PriorityBadge priority={issue.priority} /></Descriptions.Item>
@@ -140,7 +155,7 @@ const IssueDetail: React.FC = () => {
             <Markdown source={issue.description} assetContext={{ issueKey: id!, assets }} />
           </Descriptions.Item>
           <Descriptions.Item label="标签" span={2}>
-            {issue.tags && issue.tags.length > 0 ? issue.tags.map((t) => <Tag key={t.id} color={t.color}>{t.name}</Tag>) : '-'}
+            {issue.tags && issue.tags.length > 0 ? <TagLabels tags={issue.tags} /> : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="创建时间">{dayjs(issue.created_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
           <Descriptions.Item label="更新时间">{dayjs(issue.updated_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
@@ -237,6 +252,9 @@ const IssueDetail: React.FC = () => {
           </Form.Item>
           <Form.Item name="doc_url" label="文档地址">
             <Input />
+          </Form.Item>
+          <Form.Item name="tag_ids" label="标签">
+            <TagSelector allowCreate />
           </Form.Item>
         </Form>
       </Modal>

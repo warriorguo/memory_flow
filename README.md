@@ -139,7 +139,7 @@ memory_flow/
 | 认证 | `POST /auth/login` | 登录获取 Token |
 | 项目 | `GET/POST /projects` | 项目列表 / 创建 |
 | 项目 | `GET/PUT/DELETE /projects/:id` | 详情 / 更新 / 归档 |
-| 工作项 | `GET/POST /projects/:id/issues` | 工作项列表 / 创建 |
+| 工作项 | `GET/POST /projects/:id/issues` | 工作项列表（`?tag=` 可重复，按名称或 id，多个取交集；每条带 `tags`）/ 创建（可带 `tags` 名称或 `tag_ids`） |
 | 工作项 | `GET/PUT /issues/:id` | 详情 / 更新 |
 | 工作项 | `PATCH /issues/:id/status` | 状态流转 |
 | 附件 | `GET/POST /issues/:id/assets` | 附件列表 / 上传 |
@@ -149,7 +149,9 @@ memory_flow/
 | 评论 | `DELETE /issues/:id/comments/:commentId` | 删除评论 |
 | 进度 | `GET /projects/:id/progress/summary` | 统计概览 |
 | 进度 | `GET /projects/:id/progress/trend` | 趋势数据 |
-| 标签 | `GET/POST /tags` | 标签管理 |
+| 标签 | `GET/POST /tags` | 标签列表 / 创建（不指定颜色时自动从调色板分配） |
+| 标签 | `PATCH /tags/:idOrName` | 修改标签名称 / 颜色 |
+| 标签 | `POST /issues/:id/tags`、`DELETE /issues/:id/tags/:tagId` | 给工作项打 / 去标签 |
 | Memory | `GET/POST /memories` | Memory 列表 / 创建 |
 | Memory | `GET/PUT/DELETE /memories/:id` | 详情 / 更新 / 删除 |
 

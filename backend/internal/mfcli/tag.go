@@ -2,6 +2,7 @@ package mfcli
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,9 +28,50 @@ func cmdTagList(e *env, args []string) error {
 	}
 	rows := make([][]string, 0, len(tags))
 	for _, t := range tags {
-		rows = append(rows, []string{t.Name, dash(t.Color), t.ID.String()})
+		name := t.Name
+		if e.color && t.Color != nil {
+			name = colorLabel(*t.Color, " "+t.Name+" ")
+		}
+		rows = append(rows, []string{name, dash(t.Color), t.ID.String()})
 	}
-	table(e.out, []string{"NAME", "COLOR", "ID"}, rows)
+	header := []string{"NAME", "COLOR", "ID"}
+	if e.color {
+		ansiTable(e.out, header, rows)
+	} else {
+		table(e.out, header, rows)
+	}
+	return nil
+}
+
+// cmdTagUpdate renames and/or recolors a tag, addressed by name or id.
+func cmdTagUpdate(e *env, args []string) error {
+	fs := newFlagSet("tag update")
+	color := fs.String("color", "", "new hex color, e.g. #1890ff")
+	name := fs.String("name", "", "new name")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := need(pos, 1, "tag update <NAME> [--color '#1890ff'] [--name NEW_NAME]"); err != nil {
+		return err
+	}
+	if *color == "" && *name == "" {
+		return fmt.Errorf("nothing to update: pass --color and/or --name")
+	}
+
+	var req model.UpdateTagRequest
+	setIfNonEmpty(&req.Color, *color)
+	setIfNonEmpty(&req.Name, *name)
+
+	var tag model.Tag
+	raw, err := e.client.patch("/api/v1/tags/"+url.PathEscape(pos[0]), req, &tag)
+	if err != nil {
+		return err
+	}
+	if e.emitJSON(raw) {
+		return nil
+	}
+	e.printf("updated tag %s%s (%s)\n", tag.Name, e.tagLabels([]model.Tag{tag}), dash(tag.Color))
 	return nil
 }
 
@@ -55,7 +97,7 @@ func cmdTagCreate(e *env, args []string) error {
 	if e.emitJSON(raw) {
 		return nil
 	}
-	e.printf("created tag %s (%s)\n", tag.Name, tag.ID)
+	e.printf("created tag %s (%s, %s)\n", tag.Name, dash(tag.Color), tag.ID)
 	return nil
 }
 

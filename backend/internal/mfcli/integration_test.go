@@ -571,6 +571,62 @@ func TestIntegrationTags(t *testing.T) {
 	m.contains(m.fails("tag", "bogus"), "unknown `mf tag` subcommand")
 }
 
+// MF-34: tags on create, tags after the title in `mf issues`, filtering by tag
+// (ANDed), auto colors, and renaming/recoloring.
+func TestIntegrationTagsOnIssueList(t *testing.T) {
+	m := newMFTest(t)
+	m.seedProject("ALPHA", "Alpha")
+
+	m.contains(m.run("issue", "create", "ALPHA", "--type", "bug", "--title", "x", "--tag", "ui", "--tag", "P3-延后"),
+		"created ALPHA-1", "[P3-延后] [ui]")
+	m.run("issue", "create", "ALPHA", "--type", "bug", "--title", "only ui", "--tag", "UI")
+	m.run("issue", "create", "ALPHA", "--type", "bug", "--title", "untagged")
+
+	list := m.run("issues", "ALPHA")
+	m.contains(list, "x [P3-延后] [ui]", "only ui [ui]", "untagged")
+	if n := strings.Count(m.run("tags"), "ui"); n != 1 {
+		t.Errorf("--tag UI should reuse the ui tag, found %d", n)
+	}
+
+	// Every tag got a color though none was given.
+	for _, line := range strings.Split(strings.TrimSpace(m.run("tags")), "\n")[1:] {
+		if fields := strings.Fields(line); len(fields) < 2 || !strings.HasPrefix(fields[1], "#") {
+			t.Errorf("tag without a color: %q", line)
+		}
+	}
+
+	m.contains(m.run("issues", "ALPHA", "--tag", "ui"), "ALPHA-1", "ALPHA-2")
+	m.omits(m.run("issues", "ALPHA", "--tag", "ui"), "ALPHA-3")
+	and := m.run("issues", "ALPHA", "--tag", "ui", "--tag", "p3-延后")
+	m.contains(and, "ALPHA-1")
+	m.omits(and, "ALPHA-2", "ALPHA-3")
+	m.contains(m.run("issues", "ALPHA", "--tag", "never-made"), "no issues match")
+
+	// --json only adds the tags array.
+	var out struct {
+		Data []struct {
+			Key  string `json:"key"`
+			Tags []struct {
+				Name  string `json:"name"`
+				Color string `json:"color"`
+			} `json:"tags"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(m.run("issues", "ALPHA", "--tag", "ui", "--json")), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Data) != 2 || len(out.Data[0].Tags) == 0 || out.Data[0].Tags[0].Color == "" {
+		t.Errorf("json tags = %+v", out.Data)
+	}
+
+	m.contains(m.run("tag", "update", "ui", "--color", "#00FF00", "--name", "frontend"), "updated tag frontend", "#00ff00")
+	m.contains(m.run("issues", "ALPHA"), "x [P3-延后] [frontend]")
+	m.contains(m.fails("tag", "update", "frontend"), "nothing to update")
+	m.contains(m.fails("tag", "update", "frontend", "--color", "blue"), "invalid tag color")
+	m.contains(m.fails("tag", "update", "frontend", "--name", "P3-延后"), "already exists")
+	m.fails("tag", "update", "no-such", "--color", "#000000")
+}
+
 // --- assets ------------------------------------------------------------------
 
 // writeTempFile drops content on disk and returns its path, standing in for the
