@@ -118,17 +118,18 @@ When a user describes a bug or requirement, **before creating anything**:
 
 **Step 1 — Analyze scope.** Does it span multiple subsystems? Are there
 sequential steps with dependencies? Does it mix a bug fix with a new feature?
-Or is it a single, well-scoped change? If it's single and well-scoped, skip to
-Step 3.
+Or is it a single, well-scoped change? Run `mf tags` now as well and pick the
+tags each issue will carry (see [Tags](#tags)). If it's single and well-scoped,
+skip to Step 3.
 
 **Step 2 — Propose a decomposition** and wait for the user to confirm, adjust,
 or override:
 
 > **Proposed issue breakdown:**
 >
-> 1. `[requirement]` P1 — Title of first issue
-> 2. `[requirement]` P2 — Title of second issue
-> 3. `[bug]` P1 — Title of third issue
+> 1. `[requirement]` P1 — Title of first issue — tags: `backend` `room`
+> 2. `[requirement]` P2 — Title of second issue — tags: `frontend` `room`
+> 3. `[bug]` P1 — Title of third issue — tags: `backend` `enemy-ai` *(new tag)*
 >
 > **Dependencies:**
 > - #2 depends on #1 (critical) — cannot start without #1's API
@@ -153,7 +154,9 @@ EOF
 
 Required: `--type` (bug/requirement), `--title`.
 
-Tag it as you file it with `--tag` (repeatable; missing tags are created):
+Tag it as you file it with `--tag` (repeatable; missing tags are created), using
+the tags chosen from `mf tags` in Step 1 — an untagged issue drops out of every
+tag filter:
 
 ```bash
 mf issue create OZX --type bug --title "第三关 Boss 卡墙" --tag room --tag enemy-ai
@@ -467,9 +470,51 @@ mf issues MF --tag frontend             # filter; repeat --tag to AND them
 ```
 
 Every tag has a color — leave `--color` off and one is picked from a palette.
-Names match case-insensitively. Tags are the business dimension (area, system,
-feature) that type/priority/status cannot express; reuse existing tags (`mf tags`)
-before inventing near-duplicates.
+Names match case-insensitively. Tags are shared by every project, so a tag made
+for one project shows up in all of them.
+
+### Choosing tags — always look before you tag
+
+Whenever you file an issue, retag one, or filter by tag, **run `mf tags` first**
+and work from what exists. Never tag from memory: guessing `ui` when the list
+already has `frontend` creates a duplicate that splits every later filter.
+
+1. **List.** `mf tags`.
+2. **Map.** For each dimension the issue touches (below), pick the existing tag
+   that already means it. Most issues need 1–3 tags.
+3. **Create only for a real gap** — the issue has a value along a dimension that
+   no tag covers, *and* that value will recur (other issues will want the same
+   filter). A one-off detail belongs in the title or description, not a tag.
+4. **Report.** In the summary, list the tags you used and mark the ones you
+   created, so the user can veto a new tag before it spreads.
+
+### Keep tags orthogonal
+
+A tag set is useful when every tag answers exactly one question and no two tags
+answer the same one, so `--tag a --tag b` is a meaningful AND.
+
+- **One dimension per tag.** The usual dimensions are:
+  - *layer* — where the code lives: `frontend`, `backend`, `cli`, `db`
+  - *system / feature* — which part of the product: `room`, `enemy-ai`, `asset`
+  Read existing tags to learn which dimensions a project actually uses, and
+  add a new dimension only when the user wants to filter by it.
+- **Don't restate a built-in field.** Type, priority, status, assignee and project
+  already exist and are filterable. `bug`, `feature`, `p0`, `urgent`, `todo`,
+  `done`, `andrew`, `MF` are not tags. (The existing `P3-延后` breaks this rule —
+  it mixes priority and status; don't copy it, and point it out if it comes up.)
+- **No synonyms or near-duplicates.** One name per concept: not both `frontend`
+  and `web`, `enemy-ai` and `ai-enemy`, `room` and `rooms`. If two already exist,
+  tell the user and suggest renaming one onto the other (`mf tag update`) rather
+  than tagging with both.
+- **No overlap between levels.** Don't add a broad tag that just repeats a narrower
+  one (`gameplay` on everything tagged `enemy-ai`). Pick the level the user filters
+  at and stay there.
+- **Naming.** Lowercase kebab-case, a short noun for the area (`enemy-ai`, not
+  `fix-enemy-ai-bug`), in the language existing tags already use.
+
+If the user asks for a tag that breaks these rules (say `urgent`), say which
+built-in field or existing tag already covers it, and create it only if they
+still want it.
 
 ---
 

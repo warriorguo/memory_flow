@@ -130,6 +130,11 @@ mf issue create PROJECT_KEY --type bug --title "Short title" \
 Use `--type bug` for something broken, `--type requirement` for something missing.
 Only file if it's a real blocker or design issue — not a style nit.
 
+Run `mf tags` first and add `--tag` for the matching existing tags. Create a tag
+only for a real, recurring gap, and keep tags orthogonal: no restating
+type/priority/status, no synonyms of an existing tag. The full rules are in the
+memory-flow-pm skill under "Tags".
+
 ---
 
 ## Step 6 — Attach the Result
