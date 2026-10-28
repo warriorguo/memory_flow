@@ -195,6 +195,24 @@ mf issue done ISSUE-KEY --git HEAD
 origin remote), walks any intermediate status hops, and **refuses to close an issue
 with no `git_url`** — do not work around that with `--force`.
 
+### If the change touched the `mf` CLI (memory_flow repo only)
+
+The installed `mf` (`/opt/homebrew/bin/mf`) stays old until it is rebuilt, so the
+new flags the skill now documents will fail for the user. Rebuilding it is part of
+finishing the issue, not a follow-up for the user to discover:
+
+1. Compare `mf version` with `git rev-parse --short HEAD`.
+2. Build inside the sandbox with a writable Go cache:
+   ```bash
+   GOCACHE=$TMPDIR/gocache make mf      # produces ./mf (gitignored)
+   ```
+3. Run the new flags with `./mf …`. After a deploy, run them against the deployed server.
+4. The sandbox cannot write `/opt/homebrew/bin`, so put the install command
+   in your report for the user to run:
+   ```
+   ! install -m 0755 mf /opt/homebrew/bin/mf && mf version
+   ```
+
 ---
 
 ## Step 9 — CI/CD (optional, if user requests it)
@@ -229,7 +247,8 @@ The cicd-manager skill will:
 5. **Never commit downloaded assets** — `./.work/<ISSUE-KEY>` is scratch space, not part of the change.
 6. **Hand back the evidence** — attach the screenshot or recording that shows the work landed.
 7. **Never skip unread comments** — `mf issue show` says whether there are any. Read them, relay them, and act on them; a human's note outranks a stale description. Do not clear the flag with `mf comment list` unless you are actually reading the result.
-8. **Suspend, don't fail silently** — if you cannot complete the issue, suspend it and explain why:
+8. **A CLI change ships with a new `mf`.** Build `./mf`, test it, and give the user the install command (see Step 8).
+9. **Suspend, don't fail silently** — if you cannot complete the issue, suspend it and explain why:
 
 ```bash
 mf issue status ISSUE-KEY suspended
