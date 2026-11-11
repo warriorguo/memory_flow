@@ -20,6 +20,7 @@ const STATUS_CHART_COLORS: Record<string, string> = {
   done: '#52c41a',
   closed: '#8c8c8c',
   rejected: '#ff4d4f',
+  duplicate: '#13c2c2',
 };
 
 const PRIORITY_CHART_COLORS: Record<string, string> = {

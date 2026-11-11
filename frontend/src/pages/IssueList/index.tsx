@@ -7,6 +7,7 @@ import { listIssues, createIssue } from '../../api/issue';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import TagSelector from '../../components/TagSelector';
+import SimilarIssuesHint from '../../components/SimilarIssues';
 import TagManager from '../../components/TagManager';
 import { TagLabels } from '../../components/TagLabel';
 import type { IssueFilter, CreateIssueRequest, Issue, Tag } from '../../types/issue';
@@ -171,6 +172,7 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={4} />
           </Form.Item>
+          <SimilarIssuesHint projectId={projectId} form={form} />
           <Form.Item name="priority" label="优先级">
             <Select options={Object.entries(PRIORITY_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
           </Form.Item>

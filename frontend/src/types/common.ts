@@ -12,7 +12,7 @@ export interface ApiResponse<T> {
 export type ProjectStatus = 'active' | 'paused' | 'archived';
 export type IssueType = 'requirement' | 'bug';
 export type Priority = 'P0' | 'P1' | 'P2';
-export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'closed' | 'suspended' | 'rejected';
+export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'closed' | 'suspended' | 'rejected' | 'duplicate';
 export type MemoryType = 'recall' | 'write';
 
 export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
@@ -24,6 +24,7 @@ export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
   closed: '已关闭',
   suspended: '已挂起',
   rejected: '已拒绝',
+  duplicate: '重复',
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -41,6 +42,7 @@ export const STATUS_COLORS: Record<IssueStatus, string> = {
   closed: 'default',
   suspended: 'gold',
   rejected: 'error',
+  duplicate: 'cyan',
 };
 
 export const PRIORITY_COLORS: Record<Priority, string> = {
@@ -49,7 +51,8 @@ export const PRIORITY_COLORS: Record<Priority, string> = {
   P2: 'blue',
 };
 
-// Allowed status transitions
+// Allowed status transitions through PATCH /status. "duplicate" is absent on
+// purpose: it is entered only by marking a target (markDuplicate, MF-36).
 export const ALLOWED_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
   todo: ['in_progress', 'suspended', 'rejected'],
   in_progress: ['review', 'done', 'suspended', 'todo'],
@@ -59,4 +62,8 @@ export const ALLOWED_TRANSITIONS: Record<IssueStatus, IssueStatus[]> = {
   closed: [],
   suspended: ['todo'],
   rejected: ['todo'],
+  duplicate: ['todo'],
 };
+
+// Statuses from which an issue can be marked as a duplicate of another.
+export const CAN_MARK_DUPLICATE: IssueStatus[] = ['todo', 'in_progress', 'review', 'testing', 'suspended', 'duplicate'];

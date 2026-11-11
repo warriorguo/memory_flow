@@ -1,5 +1,5 @@
 import client from './client';
-import type { Issue, CreateIssueRequest, UpdateIssueRequest, IssueFilter, IssueHistory, ProgressSummary, TrendData } from '../types/issue';
+import type { Issue, SimilarIssue, SimilarIssuesRequest, CreateIssueRequest, UpdateIssueRequest, IssueFilter, IssueHistory, ProgressSummary, TrendData } from '../types/issue';
 import type { PaginatedResponse, ApiResponse } from '../types/common';
 
 export const listIssues = async (projectId: string, filter: IssueFilter = {}): Promise<PaginatedResponse<Issue>> => {
@@ -19,6 +19,16 @@ export const getIssue = async (id: string): Promise<Issue> => {
 
 export const createIssue = async (projectId: string, req: CreateIssueRequest): Promise<Issue> => {
   const { data } = await client.post<ApiResponse<Issue>>(`/projects/${projectId}/issues`, req);
+  return data.data;
+};
+
+export const findSimilarIssues = async (projectId: string, req: SimilarIssuesRequest): Promise<SimilarIssue[]> => {
+  const { data } = await client.post<ApiResponse<SimilarIssue[]>>(`/projects/${projectId}/issues/similar`, req);
+  return data.data;
+};
+
+export const markDuplicate = async (id: string, of: string): Promise<Issue> => {
+  const { data } = await client.post<ApiResponse<Issue>>(`/issues/${id}/duplicate`, { of });
   return data.data;
 };
 

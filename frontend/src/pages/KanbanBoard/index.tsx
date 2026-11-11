@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DndContext, useDroppable, useDraggable, useSensor, useSensors, PointerSensor, DragOverlay } from '@dnd-kit/core';
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { listIssues, transitionIssueStatus, createIssue } from '../../api/issue';
+import SimilarIssuesHint from '../../components/SimilarIssues';
 import { useNavigate, useParams } from 'react-router-dom';
 import IssueCard from '../../components/IssueCard';
 import { ISSUE_STATUS_LABELS, ALLOWED_TRANSITIONS } from '../../types/common';
@@ -24,6 +25,7 @@ const COLUMN_COLORS: Record<IssueStatus, { bg: string; header: string; border: s
   closed: { bg: '#fafafa', header: '#8c8c8c', border: '#d9d9d9' },
   suspended: { bg: '#fffbe6', header: '#faad14', border: '#ffe58f' },
   rejected: { bg: '#fff2f0', header: '#ff4d4f', border: '#ffa39e' },
+  duplicate: { bg: '#e6fffb', header: '#13c2c2', border: '#87e8de' },
 };
 
 interface Props {
@@ -260,6 +262,7 @@ const KanbanBoard: React.FC<Props> = ({ projectId: propProjectId }) => {
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} />
           </Form.Item>
+          <SimilarIssuesHint projectId={projectId} form={form} />
         </Form>
       </Modal>
     </div>

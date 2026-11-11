@@ -3,7 +3,8 @@ import { Alert, Descriptions, Button, Card, List, Modal, Form, Input, Select, Ta
 import { EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory } from '../../api/issue';
+import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory, findSimilarIssues, markDuplicate } from '../../api/issue';
+import { SimilarIssueList } from '../../components/SimilarIssues';
 import { listAssets } from '../../api/asset';
 import { listComments } from '../../api/comment';
 import { listMemories } from '../../api/memory';
@@ -15,7 +16,7 @@ import CommentPanel from '../../components/CommentPanel';
 import DependencyPanel from '../../components/DependencyPanel';
 import TagSelector from '../../components/TagSelector';
 import { TagLabels } from '../../components/TagLabel';
-import { ALLOWED_TRANSITIONS, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
+import { ALLOWED_TRANSITIONS, CAN_MARK_DUPLICATE, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
 
@@ -25,6 +26,8 @@ const IssueDetail: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupTarget, setDupTarget] = useState('');
   const [form] = Form.useForm();
 
   const { data: issue, isLoading } = useQuery({
@@ -95,6 +98,34 @@ const IssueDetail: React.FC = () => {
     onError: () => message.error('操作失败'),
   });
 
+  // Candidates for "mark as duplicate": what the duplicate detector thinks
+  // this issue is the same as. Fetched only while the dialog is open.
+  const { data: dupCandidates = [] } = useQuery({
+    queryKey: ['similar-issues', 'of', issue?.issue_key],
+    queryFn: () =>
+      findSimilarIssues(issue!.project_id, {
+        type: issue!.type,
+        title: issue!.title,
+        description: issue!.description,
+        exclude_key: issue!.issue_key,
+      }),
+    enabled: dupOpen && !!issue,
+  });
+
+  const dupMutation = useMutation({
+    mutationFn: (target: string) => markDuplicate(id!, target),
+    onSuccess: (updated) => {
+      message.success(`已标记为 ${updated.duplicate_of?.issue_key ?? dupTarget} 的重复`);
+      queryClient.invalidateQueries({ queryKey: ['issue'] });
+      queryClient.invalidateQueries({ queryKey: ['issueHistory', id] });
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['progress-summary'] });
+      setDupOpen(false);
+      setDupTarget('');
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => message.error(err.response?.data?.error ?? '操作失败'),
+  });
+
   if (isLoading) return <Spin />;
   if (!issue) return null;
 
@@ -141,7 +172,15 @@ const IssueDetail: React.FC = () => {
         <Descriptions column={2} bordered>
           <Descriptions.Item label="类型">{issue.type === 'requirement' ? '需求' : '缺陷'}</Descriptions.Item>
           <Descriptions.Item label="优先级"><PriorityBadge priority={issue.priority} /></Descriptions.Item>
-          <Descriptions.Item label="状态"><StatusTag status={issue.status} /></Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <StatusTag status={issue.status} />
+            {issue.duplicate_of && (
+              <span>
+                重复于 <a onClick={() => navigate(`/issues/${issue.duplicate_of!.issue_key}`)}>{issue.duplicate_of.issue_key}</a>
+                {' '}{issue.duplicate_of.title}
+              </span>
+            )}
+          </Descriptions.Item>
           <Descriptions.Item label="指派人">{issue.assignee_id || '-'}</Descriptions.Item>
           <Descriptions.Item label="创建人">{issue.creator_id || '-'}</Descriptions.Item>
           <Descriptions.Item label="来源">{issue.source || '-'}</Descriptions.Item>
@@ -154,6 +193,17 @@ const IssueDetail: React.FC = () => {
                 this issue's attachments and render inline. */}
             <Markdown source={issue.description} assetContext={{ issueKey: id!, assets }} />
           </Descriptions.Item>
+          {issue.duplicates && issue.duplicates.length > 0 && (
+            <Descriptions.Item label="已并入的重复" span={2}>
+              <Space direction="vertical" size={2}>
+                {issue.duplicates.map((d) => (
+                  <span key={d.id}>
+                    <a onClick={() => navigate(`/issues/${d.issue_key}`)}>{d.issue_key}</a> {d.title}
+                  </span>
+                ))}
+              </Space>
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="标签" span={2}>
             {issue.tags && issue.tags.length > 0 ? <TagLabels tags={issue.tags} /> : '-'}
           </Descriptions.Item>
@@ -161,15 +211,20 @@ const IssueDetail: React.FC = () => {
           <Descriptions.Item label="更新时间">{dayjs(issue.updated_at).format('YYYY-MM-DD HH:mm')}</Descriptions.Item>
         </Descriptions>
 
-        {allowedNext.length > 0 && (
+        {(allowedNext.length > 0 || CAN_MARK_DUPLICATE.includes(issue.status)) && (
           <div style={{ marginTop: 16 }}>
             <span style={{ marginRight: 8 }}>状态流转:</span>
-            <Space>
+            <Space wrap>
               {allowedNext.map((s) => (
                 <Button key={s} size="small" onClick={() => transitionMutation.mutate(s)} loading={transitionMutation.isPending}>
                   {ISSUE_STATUS_LABELS[s]}
                 </Button>
               ))}
+              {CAN_MARK_DUPLICATE.includes(issue.status) && (
+                <Button size="small" onClick={() => setDupOpen(true)}>
+                  {issue.status === 'duplicate' ? '改为其他单的重复' : '标记为重复'}
+                </Button>
+              )}
             </Space>
           </div>
         )}
@@ -216,6 +271,30 @@ const IssueDetail: React.FC = () => {
           }))}
         />
       </Card>
+
+      <Modal
+        title={`将 ${issue.issue_key} 标记为重复`}
+        open={dupOpen}
+        onCancel={() => setDupOpen(false)}
+        onOk={() => dupTarget.trim() && dupMutation.mutate(dupTarget.trim())}
+        okButtonProps={{ disabled: !dupTarget.trim() }}
+        confirmLoading={dupMutation.isPending}
+        width={640}
+      >
+        <p>本单会关闭为「重复」并指向目标单；本单的证据保留，目标单会列出它并收到一条评论。</p>
+        <Input
+          placeholder="目标工作项编号，如 MF-12"
+          value={dupTarget}
+          onChange={(e) => setDupTarget(e.target.value)}
+          onPressEnter={() => dupTarget.trim() && dupMutation.mutate(dupTarget.trim())}
+        />
+        {dupCandidates.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ color: '#999' }}>疑似重复：</div>
+            <SimilarIssueList items={dupCandidates} onPick={(c) => setDupTarget(c.key)} />
+          </div>
+        )}
+      </Modal>
 
       <Modal
         title="编辑工作项"

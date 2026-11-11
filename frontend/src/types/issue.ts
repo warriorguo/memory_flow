@@ -1,4 +1,5 @@
 import type { IssueStatus, IssueType, Priority } from './common';
+import type { IssueRef } from './dependency';
 
 export interface Issue {
   id: string;
@@ -19,6 +20,31 @@ export interface Issue {
   tags?: Tag[];
   created_at: string;
   updated_at: string;
+  // MF-36: set while status is "duplicate"; the refs come with a single-issue read.
+  duplicate_of_id?: string;
+  duplicate_of?: IssueRef;
+  duplicates?: IssueRef[];
+}
+
+/** An existing issue that may be the same as a draft (MF-35). */
+export interface SimilarIssue {
+  id: string;
+  key: string;
+  title: string;
+  type: IssueType;
+  status: IssueStatus;
+  score: number;
+  level: 'likely' | 'possible';
+  shared_identifiers?: string[];
+  references?: boolean;
+  title_similarity: number;
+}
+
+export interface SimilarIssuesRequest {
+  type?: IssueType;
+  title: string;
+  description?: string;
+  exclude_key?: string;
 }
 
 export interface Tag {
@@ -49,6 +75,8 @@ export interface CreateIssueRequest {
   pr_url?: string;
   doc_url?: string;
   tag_ids?: string[];
+  // The filer saw the suspected duplicates and judged this a separate issue.
+  not_duplicate?: boolean;
 }
 
 export interface UpdateIssueRequest {
