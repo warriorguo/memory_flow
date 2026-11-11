@@ -120,12 +120,26 @@ Skip this step only when the issue has no assets.
 
 ### Filing new issues during development
 
-If you encounter a blocker, broken API, missing documentation, or design flaw:
+If you encounter a blocker, broken API, missing documentation, or design flaw,
+first check it isn't filed already — a parallel session may have hit the same
+thing. Put the concrete identifiers (file, session dir, room/entity id, issue
+keys) in the draft; that is what matching keys on:
+
+```bash
+mf issue similar PROJECT_KEY --title "Short title" --desc "What is broken and where"
+```
+
+If a `likely` hit is the same problem, comment on it instead of filing. Otherwise:
 
 ```bash
 mf issue create PROJECT_KEY --type bug --title "Short title" \
   --priority P1 --desc "What is broken and where"
 ```
+
+Read the `Possible duplicates` block the create prints. If a hit turns out to be
+the same issue, close yours into it with `mf issue dup NEW_KEY EXISTING_KEY`
+(never `rejected` for "already filed"); if you already judged the hits separate,
+pass `--not-dup` on the create.
 
 Use `--type bug` for something broken, `--type requirement` for something missing.
 Only file if it's a real blocker or design issue — not a style nit.
@@ -259,14 +273,17 @@ mf issue status ISSUE-KEY suspended
 ## Status Transition Reference
 
 ```
-todo        → in_progress, suspended, rejected
-in_progress → review, done, suspended, todo
-review      → testing, in_progress
-testing     → done, in_progress
+todo        → in_progress, suspended, rejected, duplicate
+in_progress → review, done, suspended, todo, duplicate
+review      → testing, in_progress, duplicate
+testing     → done, in_progress, duplicate
 done        → closed, in_progress
-suspended   → todo
+suspended   → todo, duplicate
 rejected    → todo
+duplicate   → todo
 ```
+
+`duplicate` is entered only with `mf issue dup KEY TARGET_KEY` (it needs a target).
 
 `mf issue status KEY TARGET` walks intermediate hops automatically (closing a
 `todo` issue performs todo → in_progress → done).

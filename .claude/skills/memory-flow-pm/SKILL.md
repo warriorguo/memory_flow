@@ -13,12 +13,13 @@ description: >
   "record this", "recall memory", "what's the project status", "list bugs", "check progress",
   "create project", "update issue", "mark as done", "attach a file", "upload the screenshot",
   "get the assets for this issue", "replace the reference art", "comment on this issue",
-  "any new comments", "reply on the ticket".
+  "any new comments", "reply on the ticket", "is this already filed", "check for duplicates",
+  "mark as duplicate".
 compatibility: Uses the `mf` CLI, which reaches the remote Memory Flow API or falls back to the local standalone app
 allowed-tools: Bash(mf:*)
 metadata:
   author: warriorguo
-  version: "7.0"
+  version: "8.0"
   service-url: "https://memory-flow.local.playquota.com"
   local-fallback-url: "http://127.0.0.1:8080"
 ---
@@ -79,7 +80,7 @@ mf issues MF                          # open issues only (the usual question)
 mf issues MF --priority P0
 mf issues MF --type bug --assignee andrew
 mf issues MF --keyword "atlas export"
-mf issues MF --all                    # include done/closed/rejected
+mf issues MF --all                    # include done/closed/rejected/duplicate
 mf issues OZX --tag room              # only issues tagged room
 mf issues OZX --tag room --tag enemy-ai   # tagged room AND enemy-ai
 ```
@@ -115,6 +116,25 @@ exists to prevent.
 ### Filing issues (analyze-then-create workflow)
 
 When a user describes a bug or requirement, **before creating anything**:
+
+**Step 0 — Check it isn't already filed.** Another session may have filed the
+same thing minutes ago, worded differently. Ask for suspected duplicates with the
+draft title and description — include the concrete identifiers you have
+(session dir, room/enemy/file id, the issue keys you'd cite), since those are
+what matching keys on:
+
+```bash
+mf issue similar OZX --title "进门落点在虚空格" --desc-file - <<'EOF'
+会话 2026-11-11_172018，房间 story_3_f1_room_4_-1，Right 门
+EOF
+```
+
+Each hit has a level and its reasons (`shared: …`, `cites …`, `title 62% alike`).
+Open the `likely` ones with `mf issue show`. If one is the same issue, don't
+file — add what you have to it (`mf comment add`, `mf asset add`) and tell the
+user which issue already covers it. `possible` hits are often just related; a
+shared room id or file alone does not make two issues the same. See
+[Duplicates](#duplicates).
 
 **Step 1 — Analyze scope.** Does it span multiple subsystems? Are there
 sequential steps with dependencies? Does it mix a bug fix with a new feature?
@@ -167,6 +187,22 @@ Optional: `--desc`/`--desc-file`, `--priority` (default P2), `--assignee`,
 Priority: **P0** blocking, fix immediately · **P1** important, not blocking the
 core flow · **P2** normal, schedulable.
 
+`mf issue create` never blocks on duplicates, but it re-checks at creation time
+(catching anything filed since Step 0) and lists hits after the `created` line:
+
+```
+created OZX-1958  [bug] P2 story 房 … 进门落点在虚空格
+
+Possible duplicates of OZX-1958 — check before working on it:
+  likely    OZX-1956  [todo]  联机：错开后的进门落点压在坑沿，P2 一进窄走廊房间就坠落
+            shared: 2026-11-11_172018, story_3_f1_room_4_-1
+```
+
+**Read that block.** If a hit is the same issue, close the one you just filed
+into it: `mf issue dup OZX-1958 OZX-1956`, and tell the user. If you already
+checked the hits in Step 0 and judged them separate, pass `--not-dup` — the
+judgement is recorded in the history and the block is replaced by one line.
+
 **Step 4 — Set dependencies** (see below), then report a summary table:
 
 > | Key | Title | Type | Priority | Depends On |
@@ -196,17 +232,39 @@ mf issue status MF-1 done        # walks intermediate hops as needed
 The workflow graph:
 
 ```
-todo        → in_progress, suspended, rejected
-in_progress → review, done, suspended, todo
-review      → testing, in_progress
-testing     → done, in_progress
+todo        → in_progress, suspended, rejected, duplicate
+in_progress → review, done, suspended, todo, duplicate
+review      → testing, in_progress, duplicate
+testing     → done, in_progress, duplicate
 done        → closed, in_progress
-suspended   → todo
+suspended   → todo, duplicate
 rejected    → todo
+duplicate   → todo
 ```
 
 `mf` walks multi-hop paths for you — closing a `todo` issue performs
 todo → in_progress → done. Pass `--direct` to require a single legal hop.
+`duplicate` is entered only with `mf issue dup` (it needs a target) — see below.
+
+### Duplicates
+
+```bash
+mf issue similar OZX --title "…" --desc "…"   # before filing: is it already there?
+mf issue similar OZX-1958                    # an existing issue vs the rest of its project
+mf issue dup OZX-1958 OZX-1956               # close OZX-1958 as a duplicate of OZX-1956
+mf issue status OZX-1958 todo                # reopen (drops the link; history keeps it)
+mf issues OZX --status duplicate             # duplicates, apart from rejected
+```
+
+Matching keys on shared specific identifiers — instance ids such as session
+dirs and room ids weigh most; code names, paths and cited issue keys less —
+plus title similarity, over open issues and those closed in the last 30 days.
+
+`mf issue dup B A` closes B with status `duplicate` and points it at A. B keeps
+its evidence (description, assets, comments); `mf issue show A` lists it under
+`dups` and A gets a comment saying B was merged into it. If A is itself a
+duplicate, B points at the issue A points to. Use `duplicate`, not `rejected`,
+whenever the reason is "already filed" — stats and filters tell them apart.
 
 ### History
 
@@ -529,7 +587,9 @@ still want it.
 | Project progress | `mf project progress <KEY> [--trend N]` |
 | List issues | `mf issues <PROJECT_KEY> [filters]` |
 | Show issue | `mf issue show <KEY> [--deps] [--history] [--comments]` |
-| Create issue | `mf issue create <PROJECT_KEY> --type T --title "…"` |
+| Check for duplicates first | `mf issue similar <PROJECT_KEY> --title "…" [--desc "…"]` · `mf issue similar <KEY>` |
+| Create issue | `mf issue create <PROJECT_KEY> --type T --title "…" [--not-dup]` |
+| Close as duplicate | `mf issue dup <KEY> <TARGET_KEY>` |
 | Update issue | `mf issue update <KEY> [--field …]` |
 | Start / transition | `mf issue start <KEY>` · `mf issue status <KEY> <STATUS>` |
 | Record commit | `mf issue attach-git <KEY> [<sha\|url>]` |
@@ -556,9 +616,10 @@ identifier is expected; UUIDs also work.
 2. **Choose memory type wisely**: `recall` for reusable context, `write` for output artifacts
 3. **Files go in assets, knowledge goes in memories, messages go in comments** — attach the crash log as an asset, record what it revealed as a memory, leave the question for the next reader as a comment
 4. **Issue keys** are auto-generated as `{PROJECT_KEY}-{N}` (e.g. MF-1, MF-2)
-5. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected; add `--all` when the user asks for everything
+5. **Open items are the default** — `mf issues <KEY>` already hides done/closed/rejected/duplicate; add `--all` when the user asks for everything
 6. **Summarize progress in prose**, don't dump the table
-7. **Analyze before filing**: decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
+7. **Analyze before filing**: check `mf issue similar` first, then decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
+7a. **Read "Possible duplicates" after creating** — if a `likely` hit is the same issue, `mf issue dup` the new one into it; "already filed" is `duplicate`, never `rejected`
 8. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
 9. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
 10. **Check for unread comments before acting on an issue** — `mf issue show` says whether there are any; a human's note outranks a stale description
