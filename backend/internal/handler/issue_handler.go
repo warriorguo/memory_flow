@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -17,6 +18,14 @@ type IssueHandler struct {
 	svc      *service.IssueService
 	tagRepo  repository.TagRepository
 	resolver *IDResolver
+	comments *service.CommentService
+}
+
+// WithComments lets the handler leave a note on the target when an issue is
+// merged into it as a duplicate.
+func (h *IssueHandler) WithComments(cs *service.CommentService) *IssueHandler {
+	h.comments = cs
+	return h
 }
 
 func NewIssueHandler(svc *service.IssueService, tagRepo repository.TagRepository, resolver *IDResolver) *IssueHandler {
@@ -248,7 +257,52 @@ func (h *IssueHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue.Tags = tags
+	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
+	writeData(w, http.StatusOK, issue)
+}
+
+// MarkDuplicate closes an issue as a duplicate of another (MF-36):
+// POST /issues/{id}/duplicate {"of": "MF-12"}.
+func (h *IssueHandler) MarkDuplicate(w http.ResponseWriter, r *http.Request) {
+	id, err := h.resolver.ResolveIssueID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	var req model.MarkDuplicateRequest
+	if err := decodeJSON(r, &req); err != nil || strings.TrimSpace(req.Of) == "" {
+		writeError(w, http.StatusBadRequest, `body must be {"of": "<issue key or id>"}`)
+		return
+	}
+	targetID, err := h.resolver.ResolveIssueID(r.Context(), strings.TrimSpace(req.Of))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	var operator *string
+	if userID := middleware.GetUserID(r.Context()); userID != "" {
+		operator = &userID
+	}
+	issue, target, err := h.svc.MarkDuplicate(r.Context(), id, targetID, operator)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// The note on the target is a courtesy: the link itself is already saved.
+	if h.comments != nil && issue.DuplicateOfID != nil {
+		body := fmt.Sprintf("%s「%s」已标记为本单的重复并关闭，其证据见该单。", issue.IssueKey, issue.Title)
+		if _, err := h.comments.Create(r.Context(), target.ID, model.CreateCommentRequest{Body: body, AuthorID: operator}); err != nil {
+			log.Printf("comment on %s after marking %s duplicate: %v", target.IssueKey, issue.IssueKey, err)
+		}
+	}
+	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeData(w, http.StatusOK, issue)
 }
 
@@ -275,6 +329,10 @@ func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue.Tags = tags
+	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	writeData(w, http.StatusOK, issue)
 }

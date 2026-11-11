@@ -29,7 +29,7 @@ func exportProjects(ctx context.Context, db database.DB) ([]model.Project, error
 }
 
 func exportIssues(ctx context.Context, db database.DB) ([]model.Issue, error) {
-	rows, err := db.Query(ctx, `SELECT id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at FROM issues`)
+	rows, err := db.Query(ctx, `SELECT id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id FROM issues`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func exportIssues(ctx context.Context, db database.DB) ([]model.Issue, error) {
 		var i model.Issue
 		if err := rows.Scan(&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 			&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source, &i.Version,
-			&i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt); err != nil {
+			&i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID); err != nil {
 			return nil, err
 		}
 		out = append(out, i)

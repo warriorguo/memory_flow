@@ -19,14 +19,14 @@ func NewIssueRepo(db database.DB) *IssueRepo {
 	return &IssueRepo{db: db}
 }
 
-var issueColumns = `id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at`
+var issueColumns = `id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id`
 
 func scanIssue(row database.Row) (*model.Issue, error) {
 	var i model.Issue
 	err := row.Scan(
 		&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 		&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source,
-		&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt,
+		&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID,
 	)
 	if err != nil {
 		return nil, err
@@ -159,7 +159,7 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 		err := rows.Scan(
 			&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 			&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source,
-			&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt,
+			&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID,
 			&total,
 		)
 		if err != nil {
@@ -202,6 +202,33 @@ func (r *IssueRepo) ListDedupCandidates(ctx context.Context, projectID uuid.UUID
 		return nil, fmt.Errorf("iterate dedup candidates: %w", err)
 	}
 	return issues, nil
+}
+
+// RepointDuplicates moves every issue marked as a duplicate of fromID onto
+// toID, so duplicate chains stay one hop deep (MF-36).
+func (r *IssueRepo) RepointDuplicates(ctx context.Context, tx database.Tx, fromID, toID uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `UPDATE issues SET duplicate_of_id = $2, updated_at = now() WHERE duplicate_of_id = $1`, fromID, toID); err != nil {
+		return fmt.Errorf("repoint duplicates: %w", err)
+	}
+	return nil
+}
+
+// ListDuplicatesOf returns the issues marked as duplicates of id, oldest first.
+func (r *IssueRepo) ListDuplicatesOf(ctx context.Context, id uuid.UUID) ([]model.IssueRef, error) {
+	rows, err := r.db.Query(ctx, `SELECT id, issue_key, title, status, priority FROM issues WHERE duplicate_of_id = $1 ORDER BY created_at`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list duplicates: %w", err)
+	}
+	defer rows.Close()
+	var refs []model.IssueRef
+	for rows.Next() {
+		var ref model.IssueRef
+		if err := rows.Scan(&ref.ID, &ref.IssueKey, &ref.Title, &ref.Status, &ref.Priority); err != nil {
+			return nil, fmt.Errorf("scan duplicate: %w", err)
+		}
+		refs = append(refs, ref)
+	}
+	return refs, rows.Err()
 }
 
 func (r *IssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {

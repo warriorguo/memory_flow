@@ -59,6 +59,8 @@ type MockIssueRepo struct {
 	GetByKeyFn        func(ctx context.Context, key string) (*model.Issue, error)
 	ListFn            func(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
 	ListDedupFn       func(ctx context.Context, projectID uuid.UUID, closedSince time.Time) ([]model.Issue, error)
+	RepointFn         func(ctx context.Context, tx database.Tx, fromID, toID uuid.UUID) error
+	ListDuplicatesFn  func(ctx context.Context, id uuid.UUID) ([]model.IssueRef, error)
 	UpdateFn          func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatusFn   func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByPriorityFn func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
@@ -84,6 +86,18 @@ func (m *MockIssueRepo) ListDedupCandidates(ctx context.Context, projectID uuid.
 		return nil, nil
 	}
 	return m.ListDedupFn(ctx, projectID, closedSince)
+}
+func (m *MockIssueRepo) RepointDuplicates(ctx context.Context, tx database.Tx, fromID, toID uuid.UUID) error {
+	if m.RepointFn == nil {
+		return nil
+	}
+	return m.RepointFn(ctx, tx, fromID, toID)
+}
+func (m *MockIssueRepo) ListDuplicatesOf(ctx context.Context, id uuid.UUID) ([]model.IssueRef, error) {
+	if m.ListDuplicatesFn == nil {
+		return nil, nil
+	}
+	return m.ListDuplicatesFn(ctx, id)
 }
 func (m *MockIssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 	return m.UpdateFn(ctx, tx, id, setClauses, args)

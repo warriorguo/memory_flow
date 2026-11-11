@@ -53,7 +53,7 @@ const issueUsage = `mf issue — bugs and requirements
 
   mf issue list <PROJECT_KEY> [--status S] [--type bug|requirement] [--priority P0|P1|P2]
                               [--assignee ID] [--keyword TEXT] [--tag NAME]… [--all] [--limit N] [--page N]
-      Open issues only by default; --all or an explicit --status includes done/closed/rejected.
+      Open issues only by default; --all or an explicit --status includes done/closed/rejected/duplicate.
       Tags follow each title as [name] (colored on a terminal). --tag is repeatable
       and every given tag must match: --tag room --tag enemy-ai.
 
@@ -76,6 +76,11 @@ const issueUsage = `mf issue — bugs and requirements
   mf issue update <ISSUE_KEY> [--title "…"] [--desc "…"|--desc-file FILE] [--priority P0]
                               [--assignee ID] [--type T] [--git-url URL] [--pr-url URL] …
   mf issue status <ISSUE_KEY> <STATUS> [--direct]
+  mf issue dup <ISSUE_KEY> <TARGET_KEY>
+      Close ISSUE as a duplicate of TARGET: status "duplicate" (filterable apart from
+      rejected), ISSUE shows "dup of TARGET", TARGET lists it under "dups" and gets a
+      comment. A TARGET that is itself a duplicate resolves to the issue it points at.
+      Reopen with 'mf issue status <ISSUE_KEY> todo'.
   mf issue start <ISSUE_KEY>
   mf issue done <ISSUE_KEY> [--git <sha|url>] [--repo DIR] [--force]
   mf issue attach-git <ISSUE_KEY> [<sha|url>] [--repo DIR] [--repo-url URL] [--pr <NUM|URL>]
@@ -199,13 +204,17 @@ const workflowUsage = `Issue workflow
 
 Status graph (each hop is enforced by the API):
 
-  todo        → in_progress, suspended, rejected
-  in_progress → review, done, suspended, todo
-  review      → testing, in_progress
-  testing     → done, in_progress
+  todo        → in_progress, suspended, rejected, duplicate
+  in_progress → review, done, suspended, todo, duplicate
+  review      → testing, in_progress, duplicate
+  testing     → done, in_progress, duplicate
   done        → closed, in_progress
-  suspended   → todo
+  suspended   → todo, duplicate
   rejected    → todo
+  duplicate   → todo
+
+"duplicate" is entered only with 'mf issue dup <KEY> <TARGET>', which records
+the target; 'mf issue status <KEY> todo' reopens it and drops the link.
 
 'mf issue status' and 'mf issue done' walk intermediate hops for you: closing a
 todo issue performs todo → in_progress → done. Pass --direct to require a single

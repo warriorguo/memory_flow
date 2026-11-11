@@ -318,8 +318,20 @@ func (s *IssueService) TransitionStatus(ctx context.Context, id uuid.UUID, newSt
 	if _, ok := model.AllowedTransitions(existing.Status); !ok {
 		return nil, fmt.Errorf("cannot transition from status: %s", existing.Status)
 	}
+	if newStatus == model.StatusDuplicate {
+		return nil, fmt.Errorf("say which issue it duplicates: POST /issues/{id}/duplicate (mf issue dup %s <TARGET>)", existing.IssueKey)
+	}
 	if !model.CanTransition(existing.Status, newStatus) {
 		return nil, fmt.Errorf("cannot transition from %s to %s", existing.Status, newStatus)
+	}
+
+	// Read before the transaction: SQLite serializes writers, so a pool read
+	// while the transaction holds the lock would wait on it.
+	var prevTarget *string
+	if existing.Status == model.StatusDuplicate && existing.DuplicateOfID != nil {
+		if prev, err := s.issueRepo.GetByID(ctx, *existing.DuplicateOfID); err == nil && prev != nil {
+			prevTarget = &prev.IssueKey
+		}
 	}
 
 	tx, err := s.issueRepo.BeginTx(ctx)
@@ -335,6 +347,15 @@ func (s *IssueService) TransitionStatus(ctx context.Context, id uuid.UUID, newSt
 
 	setClauses := []string{"status = $1"}
 	args := []interface{}{newStatus}
+	// Reopening a duplicate drops the link; the history keeps where it pointed.
+	if oldStatus == model.StatusDuplicate && existing.DuplicateOfID != nil {
+		setClauses = append(setClauses, "duplicate_of_id = NULL")
+		if prevTarget != nil {
+			if err := s.historyRepo.Create(ctx, tx, id, "duplicate_of", prevTarget, nil, operatorID); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	issue, err := s.issueRepo.Update(ctx, tx, id, setClauses, args)
 	if err != nil {
@@ -346,6 +367,113 @@ func (s *IssueService) TransitionStatus(ctx context.Context, id uuid.UUID, newSt
 	}
 
 	return issue, nil
+}
+
+// MarkDuplicate closes issue id as a duplicate of target (MF-36). A target
+// that is itself a duplicate resolves to the issue it points at, and issues
+// already merged into id follow it to the new target, so every duplicate
+// points straight at a live issue. It returns the updated issue and the
+// resolved target.
+func (s *IssueService) MarkDuplicate(ctx context.Context, id, targetID uuid.UUID, operatorID *string) (*model.Issue, *model.Issue, error) {
+	issue, err := s.issueRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get issue: %w", err)
+	}
+	if issue == nil {
+		return nil, nil, fmt.Errorf("issue not found")
+	}
+	target, err := s.resolveDuplicateRoot(ctx, targetID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if target.ID == issue.ID {
+		return nil, nil, fmt.Errorf("an issue cannot be a duplicate of itself")
+	}
+	if issue.Status != model.StatusDuplicate && !model.CanTransition(issue.Status, model.StatusDuplicate) {
+		return nil, nil, fmt.Errorf("cannot mark a %s issue as a duplicate (reopen it first)", issue.Status)
+	}
+	if issue.Status == model.StatusDuplicate && issue.DuplicateOfID != nil && *issue.DuplicateOfID == target.ID {
+		return issue, target, nil
+	}
+
+	var oldTarget *string
+	if issue.DuplicateOfID != nil {
+		if prev, err := s.issueRepo.GetByID(ctx, *issue.DuplicateOfID); err == nil && prev != nil {
+			oldTarget = &prev.IssueKey
+		}
+	}
+
+	tx, err := s.issueRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if issue.Status != model.StatusDuplicate {
+		oldStatus, newStatus := issue.Status, model.StatusDuplicate
+		if err := s.historyRepo.Create(ctx, tx, id, "status", &oldStatus, &newStatus, operatorID); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := s.historyRepo.Create(ctx, tx, id, "duplicate_of", oldTarget, &target.IssueKey, operatorID); err != nil {
+		return nil, nil, err
+	}
+
+	updated, err := s.issueRepo.Update(ctx, tx, id,
+		[]string{"status = $1", "duplicate_of_id = $2"},
+		[]interface{}{model.StatusDuplicate, target.ID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("mark duplicate: %w", err)
+	}
+	if err := s.issueRepo.RepointDuplicates(ctx, tx, id, target.ID); err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, fmt.Errorf("commit transaction: %w", err)
+	}
+	return updated, target, nil
+}
+
+// resolveDuplicateRoot follows duplicate_of links from id to the live issue
+// at the end of the chain.
+func (s *IssueService) resolveDuplicateRoot(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
+	seen := map[uuid.UUID]bool{}
+	for {
+		issue, err := s.issueRepo.GetByID(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get target issue: %w", err)
+		}
+		if issue == nil {
+			return nil, fmt.Errorf("target issue not found")
+		}
+		if issue.Status != model.StatusDuplicate || issue.DuplicateOfID == nil {
+			return issue, nil
+		}
+		if seen[issue.ID] {
+			return nil, fmt.Errorf("duplicate chain loops at %s", issue.IssueKey)
+		}
+		seen[issue.ID] = true
+		id = *issue.DuplicateOfID
+	}
+}
+
+// FillDuplicateRefs sets DuplicateOf and Duplicates on a single-issue read.
+func (s *IssueService) FillDuplicateRefs(ctx context.Context, issue *model.Issue) error {
+	if issue.DuplicateOfID != nil {
+		target, err := s.issueRepo.GetByID(ctx, *issue.DuplicateOfID)
+		if err != nil {
+			return err
+		}
+		if target != nil {
+			issue.DuplicateOf = &model.IssueRef{ID: target.ID, IssueKey: target.IssueKey, Title: target.Title, Status: target.Status, Priority: target.Priority}
+		}
+	}
+	dups, err := s.issueRepo.ListDuplicatesOf(ctx, issue.ID)
+	if err != nil {
+		return err
+	}
+	issue.Duplicates = dups
+	return nil
 }
 
 func (s *IssueService) GetHistory(ctx context.Context, issueID uuid.UUID) ([]model.IssueHistory, error) {

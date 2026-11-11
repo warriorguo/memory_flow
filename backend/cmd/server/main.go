@@ -69,7 +69,7 @@ func main() {
 
 	// Initialize handlers
 	projectHandler := handler.NewProjectHandler(projectSvc, resolver)
-	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo, resolver)
+	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc)
 	progressHandler := handler.NewProgressHandler(progressSvc, resolver)
 	memoryHandler := handler.NewMemoryHandler(memorySvc)
 	tagHandler := handler.NewTagHandler(tagRepo, resolver)

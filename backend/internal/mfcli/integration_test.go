@@ -63,7 +63,7 @@ func newMFTest(t *testing.T) *mfTest {
 
 	router := handler.NewRouter(
 		handler.NewProjectHandler(projectSvc, resolver),
-		handler.NewIssueHandler(issueSvc, tagRepo, resolver),
+		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc),
 		handler.NewProgressHandler(progressSvc, resolver),
 		handler.NewMemoryHandler(memorySvc),
 		handler.NewTagHandler(tagRepo, resolver),

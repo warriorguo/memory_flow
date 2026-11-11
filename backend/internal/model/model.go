@@ -46,6 +46,18 @@ type Issue struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Tags        []Tag     `json:"tags,omitempty"`
+	// DuplicateOfID points at the issue this one duplicates; set only while
+	// Status is "duplicate" (MF-36).
+	DuplicateOfID *uuid.UUID `json:"duplicate_of_id,omitempty"`
+	// DuplicateOf and Duplicates are filled on the single-issue read: the
+	// issue this one was closed into, and the issues closed into this one.
+	DuplicateOf *IssueRef  `json:"duplicate_of,omitempty"`
+	Duplicates  []IssueRef `json:"duplicates,omitempty"`
+}
+
+// MarkDuplicateRequest closes an issue as a duplicate of Of (a key or id).
+type MarkDuplicateRequest struct {
+	Of string `json:"of"`
 }
 
 // MarshalJSON serializes an Issue with its key exposed under both `key` (matching

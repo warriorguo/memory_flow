@@ -7,15 +7,22 @@ package model
 // it: the API service enforces it on PATCH /issues/{id}/status, and the mf CLI
 // consults it to walk multi-hop transitions (see [TransitionPath]) instead of
 // failing on an illegal single hop.
+//
+// "duplicate" (MF-36) is reached only through marking an issue as a
+// duplicate of another (it needs a target), and reopening one goes to todo.
 var StatusTransitions = map[string][]string{
-	"todo":        {"in_progress", "suspended", "rejected"},
-	"in_progress": {"review", "done", "suspended", "todo"},
-	"review":      {"testing", "in_progress"},
-	"testing":     {"done", "in_progress"},
+	"todo":        {"in_progress", "suspended", "rejected", "duplicate"},
+	"in_progress": {"review", "done", "suspended", "todo", "duplicate"},
+	"review":      {"testing", "in_progress", "duplicate"},
+	"testing":     {"done", "in_progress", "duplicate"},
 	"done":        {"closed", "in_progress"},
-	"suspended":   {"todo"},
+	"suspended":   {"todo", "duplicate"},
 	"rejected":    {"todo"},
+	"duplicate":   {"todo"},
 }
+
+// StatusDuplicate is the closed state of an issue merged into another.
+const StatusDuplicate = "duplicate"
 
 // AllowedTransitions returns the statuses reachable in one step from status.
 // The second result is false when status is not a known workflow state.
@@ -58,6 +65,10 @@ func TransitionPath(from, to string) (path []string, ok bool) {
 		queue = queue[1:]
 		for _, next := range StatusTransitions[cur] {
 			if _, seen := prev[next]; seen {
+				continue
+			}
+			// Never route through "duplicate": entering it needs a target.
+			if next == StatusDuplicate && next != to {
 				continue
 			}
 			prev[next] = cur

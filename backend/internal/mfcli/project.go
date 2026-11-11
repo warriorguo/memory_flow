@@ -299,7 +299,7 @@ func cmdProjectProgress(e *env, args []string) error {
 	if !e.asJSON {
 		e.printf("%s: %d issue(s) total\n", pos[0], summary.Total)
 		e.printf("  status    %s\n", sortedCounts(summary.StatusCounts,
-			[]string{"todo", "in_progress", "review", "testing", "done", "closed", "suspended", "rejected"}))
+			[]string{"todo", "in_progress", "review", "testing", "done", "closed", "suspended", "rejected", "duplicate"}))
 		e.printf("  priority  %s\n", sortedCounts(summary.PriorityCounts, []string{"P0", "P1", "P2"}))
 		e.printf("  type      %s\n", sortedCounts(summary.TypeCounts, []string{"bug", "requirement"}))
 	}

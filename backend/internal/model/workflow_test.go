@@ -89,3 +89,24 @@ func TestAllowedTransitions(t *testing.T) {
 		t.Error("closed has no outgoing transitions and should report unknown")
 	}
 }
+
+// MF-36: "duplicate" needs a target, so a multi-hop walk never passes
+// through it, but it is a legal direct hop and reopens to todo.
+func TestTransitionPathAvoidsDuplicate(t *testing.T) {
+	for _, from := range []string{"todo", "in_progress", "review", "testing", "suspended"} {
+		for _, to := range []string{"todo", "in_progress", "review", "testing", "done", "closed", "suspended", "rejected"} {
+			path, _ := TransitionPath(from, to)
+			for _, step := range path {
+				if step == StatusDuplicate {
+					t.Errorf("%s → %s walks through duplicate: %v", from, to, path)
+				}
+			}
+		}
+	}
+	if path, ok := TransitionPath("review", StatusDuplicate); !ok || len(path) != 1 {
+		t.Errorf("review → duplicate should be one hop, got %v %v", path, ok)
+	}
+	if path, ok := TransitionPath(StatusDuplicate, "in_progress"); !ok || path[0] != "todo" {
+		t.Errorf("duplicate reopens through todo, got %v %v", path, ok)
+	}
+}

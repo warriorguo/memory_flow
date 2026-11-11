@@ -12,7 +12,7 @@ import (
 
 // closedStatuses are hidden from `mf issue list` unless --all or an explicit
 // --status is given: the default question is "what is still open?".
-var closedStatuses = map[string]bool{"done": true, "closed": true, "rejected": true}
+var closedStatuses = map[string]bool{"done": true, "closed": true, "rejected": true, "duplicate": true}
 
 func cmdIssueList(e *env, args []string) error {
 	fs := newFlagSet("issue list")
@@ -23,7 +23,7 @@ func cmdIssueList(e *env, args []string) error {
 	keyword := fs.String("keyword", "", "search titles and descriptions")
 	var tags stringsFlag
 	fs.Var(&tags, "tag", "only issues carrying this tag (repeatable; all must match)")
-	all := fs.Bool("all", false, "include done/closed/rejected issues")
+	all := fs.Bool("all", false, "include done/closed/rejected/duplicate issues")
 	limit := fs.Int("limit", 50, "max issues to show")
 	page := fs.Int("page", 1, "page number")
 	pos, err := parseArgs(fs, args)
@@ -406,8 +406,49 @@ func cmdIssueStatus(e *env, args []string) error {
 	if err := need(pos, 2, "issue status <ISSUE_KEY> <STATUS>"); err != nil {
 		return err
 	}
+	if pos[1] == model.StatusDuplicate {
+		return fmt.Errorf("a duplicate needs its target: mf issue dup %s <TARGET_KEY>", pos[0])
+	}
 	_, err = e.transition(pos[0], pos[1], *direct)
 	return err
+}
+
+// cmdIssueDup closes an issue as a duplicate of another (MF-36). The issue
+// keeps its own evidence and points at the target; the target lists it.
+// Reopen with 'mf issue status <KEY> todo'.
+func cmdIssueDup(e *env, args []string) error {
+	fs := newFlagSet("issue dup")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := need(pos, 2, "issue dup <ISSUE_KEY> <TARGET_KEY>   (close ISSUE as a duplicate of TARGET)"); err != nil {
+		return err
+	}
+	before, _, err := e.fetchIssue(pos[0])
+	if err != nil {
+		return err
+	}
+	var issue model.Issue
+	raw, err := e.client.post("/api/v1/issues/"+pos[0]+"/duplicate", model.MarkDuplicateRequest{Of: pos[1]}, &issue)
+	if err != nil {
+		if strings.Contains(err.Error(), "404 page not found") {
+			return fmt.Errorf("this Memory Flow server predates duplicate marking (MF-36); upgrade it to use `mf issue dup`")
+		}
+		return err
+	}
+	if e.emitJSON(raw) {
+		return nil
+	}
+	target := pos[1]
+	if issue.DuplicateOf != nil {
+		target = issue.DuplicateOf.IssueKey
+		if !strings.EqualFold(target, pos[1]) {
+			target += fmt.Sprintf(" (%s is itself a duplicate of it)", pos[1])
+		}
+	}
+	e.printf("%s: %s → duplicate of %s\n", issue.IssueKey, before.Status, target)
+	return nil
 }
 
 func cmdIssueStart(e *env, args []string) error {

@@ -241,7 +241,7 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 
 	return handler.NewRouter(
 		handler.NewProjectHandler(projectSvc, resolver),
-		handler.NewIssueHandler(issueSvc, tagRepo, resolver),
+		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc),
 		handler.NewProgressHandler(progressSvc, resolver),
 		handler.NewMemoryHandler(memorySvc),
 		handler.NewTagHandler(tagRepo, resolver),

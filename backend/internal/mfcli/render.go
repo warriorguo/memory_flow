@@ -186,6 +186,16 @@ func printIssue(w io.Writer, issue *model.Issue) {
 		}
 		fmt.Fprintf(w, "  tags      %s\n", strings.Join(names, ", "))
 	}
+	if d := issue.DuplicateOf; d != nil {
+		fmt.Fprintf(w, "  dup of    %s [%s] %s\n", d.IssueKey, d.Status, truncate(d.Title, 60))
+	}
+	if len(issue.Duplicates) > 0 {
+		keys := make([]string, len(issue.Duplicates))
+		for i, d := range issue.Duplicates {
+			keys[i] = d.IssueKey
+		}
+		fmt.Fprintf(w, "  dups      %s\n", strings.Join(keys, ", "))
+	}
 	fmt.Fprintf(w, "  created   %s\n", shortTime(issue.CreatedAt))
 	fmt.Fprintf(w, "  updated   %s\n", shortTime(issue.UpdatedAt))
 	if desc := strings.TrimSpace(deref(issue.Description)); desc != "" {

@@ -140,6 +140,14 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 			i.Status, i.AssigneeID, i.CreatorID, i.Source, i.Version, i.GitURL,
 			i.PRURL, i.DocURL, ts(i.CreatedAt), ts(i.UpdatedAt))
 	}
+	// duplicate_of_id references another issue, which may come later in the
+	// snapshot, so it is set once every issue row exists. The guard applies it
+	// only where the incoming row won (or tied) the last-write-wins upsert.
+	for _, i := range s.Issues {
+		if _, err := db.Exec(ctx, issueDuplicateOfUpdate, i.ID, i.DuplicateOfID, ts(i.UpdatedAt)); err != nil {
+			res.Errors = append(res.Errors, fmt.Sprintf("%v duplicate_of: %v", i.ID, err))
+		}
+	}
 	for _, h := range s.IssueHistory {
 		apply(ctx, db, res, historyInsert, h.ID,
 			h.ID, h.IssueID, h.FieldName, h.OldValue, h.NewValue, h.OperatorID, ts(h.CreatedAt))
@@ -307,6 +315,8 @@ ON CONFLICT(id) DO UPDATE SET
   version=excluded.version, git_url=excluded.git_url, pr_url=excluded.pr_url, doc_url=excluded.doc_url,
   updated_at=excluded.updated_at
 WHERE excluded.updated_at > issues.updated_at`
+
+const issueDuplicateOfUpdate = `UPDATE issues SET duplicate_of_id = $2 WHERE id = $1 AND updated_at <= $3`
 
 const memoryUpsert = `
 INSERT INTO memories (id, project_id, type, title, content, source_object_type, source_object_id, creator_id, created_at, updated_at)

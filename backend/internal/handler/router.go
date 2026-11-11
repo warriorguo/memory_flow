@@ -39,6 +39,7 @@ func NewRouter(
 		r.Get("/issues/{id}", issueHandler.Get)
 		r.Put("/issues/{id}", issueHandler.Update)
 		r.Patch("/issues/{id}/status", issueHandler.TransitionStatus)
+		r.Post("/issues/{id}/duplicate", issueHandler.MarkDuplicate)
 		r.Get("/issues/{id}/history", issueHandler.GetHistory)
 
 		// Issue dependencies
