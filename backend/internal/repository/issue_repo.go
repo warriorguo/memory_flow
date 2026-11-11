@@ -174,6 +174,36 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 	return issues, total, nil
 }
 
+// ListDedupCandidates returns the issues of a project a new issue could
+// duplicate: every open one, plus done/closed ones updated since closedSince.
+// Rejected (and, once it exists, duplicate) issues are left out. It reads the
+// live table, so an issue committed a moment ago is included (MF-35).
+func (r *IssueRepo) ListDedupCandidates(ctx context.Context, projectID uuid.UUID, closedSince time.Time) ([]model.Issue, error) {
+	query := fmt.Sprintf(`
+		SELECT %s FROM issues
+		WHERE project_id = $1
+		  AND status NOT IN ('rejected', 'duplicate')
+		  AND (status NOT IN ('done', 'closed') OR updated_at >= $2)
+		ORDER BY created_at DESC`, issueColumns)
+	rows, err := r.db.Query(ctx, query, projectID, closedSince)
+	if err != nil {
+		return nil, fmt.Errorf("list dedup candidates: %w", err)
+	}
+	defer rows.Close()
+	var issues []model.Issue
+	for rows.Next() {
+		i, err := scanIssue(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan issue: %w", err)
+		}
+		issues = append(issues, *i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate dedup candidates: %w", err)
+	}
+	return issues, nil
+}
+
 func (r *IssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 	setClauses = append(setClauses, "updated_at = now()")
 	argIdx := len(args) + 1

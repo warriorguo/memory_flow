@@ -32,6 +32,7 @@ func NewRouter(
 		// Issues (scoped by project for creation/listing)
 		r.Get("/projects/{projectId}/issues", issueHandler.ListByProject)
 		r.Post("/projects/{projectId}/issues", issueHandler.Create)
+		r.Post("/projects/{projectId}/issues/similar", issueHandler.Similar)
 
 		// Issues (direct access)
 		r.Get("/issues", issueHandler.Search)

@@ -225,7 +225,7 @@ func dispatchProject(e *env, args []string) error {
 
 func dispatchIssue(e *env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mf issue <list|show|create|update|status|start|done|attach-git|history|comment|comments|dep|tag> …")
+		return fmt.Errorf("usage: mf issue <list|show|create|similar|update|status|start|done|attach-git|history|comment|comments|dep|tag> …")
 	}
 	switch args[0] {
 	case "list", "ls":
@@ -234,6 +234,8 @@ func dispatchIssue(e *env, args []string) error {
 		return cmdIssueShow(e, args[1:])
 	case "create", "new":
 		return cmdIssueCreate(e, args[1:])
+	case "similar", "dups":
+		return cmdIssueSimilar(e, args[1:])
 	case "update", "edit":
 		return cmdIssueUpdate(e, args[1:])
 	case "status":

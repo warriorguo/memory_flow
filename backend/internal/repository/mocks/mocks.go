@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/warriorguo/memory_flow/backend/internal/database"
@@ -57,6 +58,7 @@ type MockIssueRepo struct {
 	GetByIDFn         func(ctx context.Context, id uuid.UUID) (*model.Issue, error)
 	GetByKeyFn        func(ctx context.Context, key string) (*model.Issue, error)
 	ListFn            func(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
+	ListDedupFn       func(ctx context.Context, projectID uuid.UUID, closedSince time.Time) ([]model.Issue, error)
 	UpdateFn          func(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatusFn   func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByPriorityFn func(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
@@ -76,6 +78,12 @@ func (m *MockIssueRepo) GetByKey(ctx context.Context, key string) (*model.Issue,
 }
 func (m *MockIssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error) {
 	return m.ListFn(ctx, filter)
+}
+func (m *MockIssueRepo) ListDedupCandidates(ctx context.Context, projectID uuid.UUID, closedSince time.Time) ([]model.Issue, error) {
+	if m.ListDedupFn == nil {
+		return nil, nil
+	}
+	return m.ListDedupFn(ctx, projectID, closedSince)
 }
 func (m *MockIssueRepo) Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error) {
 	return m.UpdateFn(ctx, tx, id, setClauses, args)

@@ -283,6 +283,9 @@ type CreateIssueRequest struct {
 	// any that do not exist yet (the same rule `mf issue tag` follows).
 	TagIDs []uuid.UUID `json:"tag_ids,omitempty"`
 	Tags   []string    `json:"tags,omitempty"`
+	// NotDuplicate records that the filer looked at the suspected duplicates
+	// and judged this a separate issue; the judgement lands in the history.
+	NotDuplicate bool `json:"not_duplicate,omitempty"`
 }
 
 type UpdateIssueRequest struct {

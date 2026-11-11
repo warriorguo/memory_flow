@@ -65,6 +65,14 @@ const issueUsage = `mf issue — bugs and requirements
                                 [--priority P1] [--assignee ID] [--source S] [--version V]
                                 [--git-url URL] [--pr-url URL] [--doc-url URL] [--tag NAME]…
       --tag is repeatable; tags that do not exist yet are created with a palette color.
+      Never blocks on duplicates: when existing issues look like the same thing, they
+      are listed after the "created" line under "Possible duplicates" (and in --json
+      as similar_issues). --not-dup records that you checked them and this is separate.
+  mf issue similar <PROJECT_KEY> --title "…" [--desc "…"|--desc-file FILE] [--type T]
+  mf issue similar <ISSUE_KEY>
+      Suspected duplicates of a draft (check before filing), or of an existing issue.
+      Matches on shared specific identifiers (session ids, room/file ids, issue keys,
+      backtick-quoted names) and close titles, over open issues and those closed in 30 days.
   mf issue update <ISSUE_KEY> [--title "…"] [--desc "…"|--desc-file FILE] [--priority P0]
                               [--assignee ID] [--type T] [--git-url URL] [--pr-url URL] …
   mf issue status <ISSUE_KEY> <STATUS> [--direct]

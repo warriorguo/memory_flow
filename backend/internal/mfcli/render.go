@@ -237,3 +237,29 @@ func sortedCounts(counts map[string]int, preferred []string) string {
 	}
 	return strings.Join(parts, ", ")
 }
+
+// printSimilar lists suspected duplicates, one per line plus a line of
+// reasons, so a reader (often an agent) can judge each without opening it.
+func printSimilar(w io.Writer, similar []model.SimilarIssue) {
+	for _, s := range similar {
+		fmt.Fprintf(w, "  %-8s  %s  [%s]  %s\n", s.Level, s.Key, s.Status, truncate(s.Title, 60))
+		var why []string
+		if len(s.SharedIdentifiers) > 0 {
+			ids := s.SharedIdentifiers
+			more := ""
+			if len(ids) > 4 {
+				ids, more = ids[:4], fmt.Sprintf(" (+%d)", len(s.SharedIdentifiers)-4)
+			}
+			why = append(why, "shared: "+strings.Join(ids, ", ")+more)
+		}
+		if s.References {
+			why = append(why, "cites "+s.Key)
+		}
+		if s.TitleSimilarity >= 0.3 {
+			why = append(why, fmt.Sprintf("title %.0f%% alike", s.TitleSimilarity*100))
+		}
+		if len(why) > 0 {
+			fmt.Fprintf(w, "            %s\n", strings.Join(why, "; "))
+		}
+	}
+}

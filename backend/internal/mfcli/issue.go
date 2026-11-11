@@ -203,6 +203,7 @@ func cmdIssueCreate(e *env, args []string) error {
 	docURL := fs.String("doc-url", "", "documentation URL")
 	var tags stringsFlag
 	fs.Var(&tags, "tag", "tag name (repeatable); missing tags are created")
+	notDup := fs.Bool("not-dup", false, "you checked the suspected duplicates and this is a separate issue (recorded in history)")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
@@ -229,12 +230,19 @@ func cmdIssueCreate(e *env, args []string) error {
 	setIfNonEmpty(&req.PRURL, *prURL)
 	setIfNonEmpty(&req.DocURL, *docURL)
 	req.Tags = tags
+	req.NotDuplicate = *notDup
 
-	var issue model.Issue
-	raw, err := e.client.post("/api/v1/projects/"+pos[0]+"/issues", req, &issue)
+	// The response is the issue plus the suspected duplicates found at
+	// creation (MF-35); older servers send no similar_issues.
+	var created struct {
+		model.Issue
+		SimilarIssues []model.SimilarIssue `json:"similar_issues"`
+	}
+	raw, err := e.client.post("/api/v1/projects/"+pos[0]+"/issues", req, &created)
 	if err != nil {
 		return err
 	}
+	issue := created.Issue
 	// A server that predates tags-on-create ignores the field; tag the issue
 	// the old way so the flag works against either.
 	if len(tags) > 0 && len(issue.Tags) == 0 {
@@ -255,8 +263,83 @@ func cmdIssueCreate(e *env, args []string) error {
 		return nil
 	}
 	e.printf("created %s  [%s] %s %s%s\n", issue.IssueKey, issue.Type, issue.Priority, issue.Title, e.tagLabels(issue.Tags))
+	if similar := created.SimilarIssues; len(similar) > 0 {
+		if *notDup {
+			keys := make([]string, len(similar))
+			for i, s := range similar {
+				keys[i] = s.Key
+			}
+			e.printf("not a duplicate of %s (recorded in history)\n", strings.Join(keys, ", "))
+		} else {
+			e.printf("\nPossible duplicates of %s — check before working on it:\n", issue.IssueKey)
+			printSimilar(e.out, similar)
+		}
+	}
 	return nil
 }
+
+// cmdIssueSimilar lists existing issues that look like a draft, so a filer
+// can check for a duplicate before creating one. Given an issue key instead
+// of a project key, it checks that issue against the rest of its project.
+func cmdIssueSimilar(e *env, args []string) error {
+	fs := newFlagSet("issue similar")
+	issueType := fs.String("type", "", "bug or requirement")
+	title := fs.String("title", "", "draft title")
+	description := fs.String("desc", "", "draft description")
+	descFile := fs.String("desc-file", "", "read the draft description from file ('-' for stdin)")
+	pos, err := parseArgs(fs, args)
+	if err != nil {
+		return err
+	}
+	usage := `issue similar <PROJECT_KEY> --title "…" [--desc "…"|--desc-file FILE]  |  issue similar <ISSUE_KEY>`
+	if err := need(pos, 1, usage); err != nil {
+		return err
+	}
+	desc, err := readContent(*description, *descFile)
+	if err != nil {
+		return err
+	}
+
+	target := pos[0]
+	req := model.SimilarIssuesRequest{Type: *issueType, Title: *title}
+	setIfNonEmpty(&req.Description, desc)
+	project := target
+	if isIssueKey(target) {
+		issue, _, err := e.fetchIssue(target)
+		if err != nil {
+			return err
+		}
+		project = issue.ProjectID.String()
+		req = model.SimilarIssuesRequest{Type: issue.Type, Title: issue.Title, Description: issue.Description, ExcludeKey: issue.IssueKey}
+	} else if *title == "" && desc == "" {
+		return fmt.Errorf("--title or --desc is required (usage: mf %s)", usage)
+	}
+
+	var similar []model.SimilarIssue
+	raw, err := e.client.post("/api/v1/projects/"+project+"/issues/similar", req, &similar)
+	if err != nil {
+		// The router's bare 404 (not a JSON "project not found") means the
+		// route itself is missing.
+		if strings.Contains(err.Error(), "404 page not found") {
+			return fmt.Errorf("this Memory Flow server predates duplicate detection (MF-35); upgrade it to use `mf issue similar`")
+		}
+		return err
+	}
+	if e.emitJSON(raw) {
+		return nil
+	}
+	if len(similar) == 0 {
+		e.printf("no suspected duplicates\n")
+		return nil
+	}
+	printSimilar(e.out, similar)
+	return nil
+}
+
+var issueKeyArgRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]{1,9}-\d+$`)
+
+// isIssueKey reports whether arg names an issue (MF-35) rather than a project (MF).
+func isIssueKey(arg string) bool { return issueKeyArgRe.MatchString(arg) }
 
 func cmdIssueUpdate(e *env, args []string) error {
 	fs := newFlagSet("issue update")

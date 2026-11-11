@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/warriorguo/memory_flow/backend/internal/database"
@@ -28,6 +29,7 @@ type IssueRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error)
 	GetByKey(ctx context.Context, key string) (*model.Issue, error)
 	List(ctx context.Context, filter model.IssueFilter) ([]model.Issue, int, error)
+	ListDedupCandidates(ctx context.Context, projectID uuid.UUID, closedSince time.Time) ([]model.Issue, error)
 	Update(ctx context.Context, tx database.Tx, id uuid.UUID, setClauses []string, args []interface{}) (*model.Issue, error)
 	CountByStatus(ctx context.Context, projectID uuid.UUID) (map[string]int, error)
 	CountByPriority(ctx context.Context, projectID uuid.UUID) (map[string]int, error)

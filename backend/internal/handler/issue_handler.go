@@ -52,7 +52,7 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	issue, err := h.svc.Create(r.Context(), projectID, req)
+	issue, similar, err := h.svc.CreateWithSimilar(r.Context(), projectID, req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -71,7 +71,28 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeData(w, http.StatusCreated, issue)
+	writeData(w, http.StatusCreated, model.CreatedIssue{Issue: issue, SimilarIssues: similar})
+}
+
+// Similar lists the project's issues that look like a draft (title +
+// description), so a filer can check for duplicates before creating (MF-35).
+func (h *IssueHandler) Similar(w http.ResponseWriter, r *http.Request) {
+	projectID, err := h.resolver.ResolveProjectID(r.Context(), chi.URLParam(r, "projectId"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	var req model.SimilarIssuesRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	similar, err := h.svc.FindSimilar(r.Context(), projectID, req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeData(w, http.StatusOK, similar)
 }
 
 // resolveCreateTags turns a create request's tag_ids and tag names into tag

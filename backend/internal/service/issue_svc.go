@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/warriorguo/memory_flow/backend/internal/model"
@@ -27,42 +30,100 @@ func NewIssueService(issueRepo repository.IssueRepository, projectRepo repositor
 }
 
 func (s *IssueService) Create(ctx context.Context, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, error) {
+	issue, _, err := s.CreateWithSimilar(ctx, projectID, req)
+	return issue, err
+}
+
+// dedupClosedLookback is how far back done/closed issues still count as
+// duplicate candidates: a bug filed again shortly after its fix is worth
+// flagging, one from last year is not.
+const dedupClosedLookback = 30 * 24 * time.Hour
+
+// FindSimilar returns the existing issues of a project that look like the
+// draft in req, best first (MF-35).
+func (s *IssueService) FindSimilar(ctx context.Context, projectID uuid.UUID, req model.SimilarIssuesRequest) ([]model.SimilarIssue, error) {
+	desc := ""
+	if req.Description != nil {
+		desc = *req.Description
+	}
+	if strings.TrimSpace(req.Title) == "" && strings.TrimSpace(desc) == "" {
+		return nil, fmt.Errorf("title or description is required")
+	}
+	candidates, err := s.issueRepo.ListDedupCandidates(ctx, projectID, time.Now().UTC().Add(-dedupClosedLookback))
+	if err != nil {
+		return nil, err
+	}
+	draft := &model.Issue{Type: req.Type, Title: req.Title, Description: req.Description}
+	similar := rankSimilar(draft, candidates, req.ExcludeKey)
+	if similar == nil {
+		similar = []model.SimilarIssue{}
+	}
+	return similar, nil
+}
+
+// CreateWithSimilar creates the issue and also returns the suspected
+// duplicates found just before it was inserted. Creation never waits on the
+// filer's judgement: callers without a TTY must still be able to file. A
+// failed lookup only loses the hint, never the issue.
+//
+// With req.NotDuplicate the filer has already looked at the candidates; the
+// keys they waved through are recorded in the history as not_duplicate_of.
+func (s *IssueService) CreateWithSimilar(ctx context.Context, projectID uuid.UUID, req model.CreateIssueRequest) (*model.Issue, []model.SimilarIssue, error) {
 	if req.Type == "" {
-		return nil, fmt.Errorf("issue type is required")
+		return nil, nil, fmt.Errorf("issue type is required")
 	}
 	if !validIssueTypes[req.Type] {
-		return nil, fmt.Errorf("invalid issue type: must be 'requirement' or 'bug'")
+		return nil, nil, fmt.Errorf("invalid issue type: must be 'requirement' or 'bug'")
 	}
 	if req.Title == "" {
-		return nil, fmt.Errorf("issue title is required")
+		return nil, nil, fmt.Errorf("issue title is required")
 	}
 	if req.Priority != nil && !validPriorities[*req.Priority] {
-		return nil, fmt.Errorf("invalid priority: must be 'P0', 'P1', or 'P2'")
+		return nil, nil, fmt.Errorf("invalid priority: must be 'P0', 'P1', or 'P2'")
+	}
+
+	similar, err := s.FindSimilar(ctx, projectID, model.SimilarIssuesRequest{
+		Type: req.Type, Title: req.Title, Description: req.Description,
+	})
+	if err != nil {
+		log.Printf("duplicate lookup for new issue in %s failed: %v", projectID, err)
+		similar = nil
 	}
 
 	tx, err := s.issueRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
+		return nil, nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	num, projectKey, err := s.projectRepo.IncrementIssueNumber(ctx, tx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("increment issue number: %w", err)
+		return nil, nil, fmt.Errorf("increment issue number: %w", err)
 	}
 
 	issueKey := fmt.Sprintf("%s-%d", projectKey, num)
 
 	issue, err := s.issueRepo.Create(ctx, tx, issueKey, projectID, req)
 	if err != nil {
-		return nil, fmt.Errorf("create issue: %w", err)
+		return nil, nil, fmt.Errorf("create issue: %w", err)
+	}
+
+	if req.NotDuplicate && len(similar) > 0 && s.historyRepo != nil {
+		keys := make([]string, len(similar))
+		for i, si := range similar {
+			keys[i] = si.Key
+		}
+		judged := strings.Join(keys, ",")
+		if err := s.historyRepo.Create(ctx, tx, issue.ID, "not_duplicate_of", nil, &judged, req.CreatorID); err != nil {
+			return nil, nil, fmt.Errorf("record not-duplicate judgement: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit transaction: %w", err)
+		return nil, nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return issue, nil
+	return issue, similar, nil
 }
 
 func (s *IssueService) GetByID(ctx context.Context, id uuid.UUID) (*model.Issue, error) {
