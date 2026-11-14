@@ -8,10 +8,11 @@ import IssueListView from '../IssueList';
 import KanbanBoard from '../KanbanBoard';
 import ProgressDashboard from '../ProgressDashboard';
 import MemoryListView from '../MemoryList';
+import EpicListView from '../EpicList';
 import { CicdLinksField, CicdLinksView } from '../../components/CicdLinks';
 import dayjs from 'dayjs';
 
-const TAB_KEYS = ['overview', 'issues', 'kanban', 'progress', 'memory'] as const;
+const TAB_KEYS = ['overview', 'issues', 'epics', 'kanban', 'progress', 'memory'] as const;
 type TabKey = typeof TAB_KEYS[number];
 
 function getTabFromHash(hash: string): TabKey {
@@ -102,6 +103,11 @@ const ProjectDetail: React.FC = () => {
       key: 'issues',
       label: '需求 / Bug',
       children: <IssueListView projectId={projectId!} />,
+    },
+    {
+      key: 'epics',
+      label: 'Epic',
+      children: <EpicListView projectId={projectId!} />,
     },
     {
       key: 'kanban',

@@ -59,18 +59,20 @@ func newMFTest(t *testing.T) *mfTest {
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, 0)
 	commentSvc := service.NewCommentService(commentRepo)
+	epicSvc := service.NewEpicService(issueRepo, historyRepo, memoryRepo, repository.NewEpicRepo(db))
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
 	router := handler.NewRouter(
 		handler.NewProjectHandler(projectSvc, resolver),
-		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc),
+		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc).WithEpics(epicSvc),
 		handler.NewProgressHandler(progressSvc, resolver),
-		handler.NewMemoryHandler(memorySvc),
+		handler.NewMemoryHandler(memorySvc).WithEpics(epicSvc),
 		handler.NewTagHandler(tagRepo, resolver),
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, ""),
 		handler.NewAssetHandler(assetSvc, issueSvc, resolver),
 		handler.NewCommentHandler(commentSvc, resolver),
+		handler.NewEpicHandler(epicSvc, resolver),
 	)
 
 	srv := httptest.NewServer(router)

@@ -9,7 +9,14 @@ import (
 )
 
 type MemoryHandler struct {
-	svc *service.MemoryService
+	svc   *service.MemoryService
+	epics *service.EpicService
+}
+
+// WithEpics enables the conflict check on create (MF-39).
+func (h *MemoryHandler) WithEpics(es *service.EpicService) *MemoryHandler {
+	h.epics = es
+	return h
 }
 
 func NewMemoryHandler(svc *service.MemoryService) *MemoryHandler {
@@ -21,6 +28,13 @@ func (h *MemoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	if h.epics != nil && req.Title != "" && req.Content != "" {
+		if err := h.epics.CheckCreate(r.Context(), req); err != nil {
+			writeMemoryError(w, err)
+			return
+		}
 	}
 
 	memory, err := h.svc.Create(r.Context(), req)

@@ -26,11 +26,15 @@ func cmdIssueList(e *env, args []string) error {
 	all := fs.Bool("all", false, "include done/closed/rejected/duplicate issues")
 	limit := fs.Int("limit", 50, "max issues to show")
 	page := fs.Int("page", 1, "page number")
+	epic := fs.String("epic", "", "only the issues of this epic (with no project key: from every project)")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
 	}
-	if err := need(pos, 1, "issue list <PROJECT_KEY> [--status …] [--all]"); err != nil {
+	if len(pos) == 0 && *epic != "" {
+		return e.epicIssueList(*epic, *status, *all)
+	}
+	if err := need(pos, 1, "issue list <PROJECT_KEY> [--status …] [--all] [--epic KEY]"); err != nil {
 		return err
 	}
 
@@ -49,6 +53,7 @@ func cmdIssueList(e *env, args []string) error {
 		"priority":    *priority,
 		"assignee_id": *assignee,
 		"keyword":     *keyword,
+		"epic":        *epic,
 		"page":        strconv.Itoa(*page),
 		"page_size":   strconv.Itoa(pageSize),
 	}), "tag", tags)
@@ -125,14 +130,30 @@ func cmdIssueShow(e *env, args []string) error {
 	if commentErr != nil {
 		comments = nil
 	}
-	memories, memErr := e.fetchIssueMemories(issue.ID)
-	if memErr != nil {
-		memories = nil
+	// Memories: the issue's own, plus — when it is in an epic — the epic's
+	// shared ones with this reader's read state (MF-39). An older server only
+	// has the plain memory list.
+	var memories []model.MemoryResponse
+	var epicMemories []model.IssueMemory
+	own, shared, ok, memErr := e.fetchVisibleMemories(key)
+	switch {
+	case memErr != nil:
+	case ok:
+		memories, epicMemories = plainMemories(own), shared
+	default:
+		memories, _ = e.fetchIssueMemories(issue.ID)
+	}
+	var epic *model.EpicDetail
+	if issue.Type == model.IssueTypeEpic {
+		epic, _, _ = e.fetchEpic(key)
 	}
 	if e.asJSON {
 		raw = withAssets(raw, assets)
 		raw = withComments(raw, comments)
 		raw = withMemories(raw, memories)
+		if issue.EpicID != nil {
+			raw = spliceIssueData(raw, "epic_memories", nonNil(epicMemories))
+		}
 	}
 
 	if e.emitJSON(raw) && !*withDeps && !*withHistory {
@@ -149,8 +170,14 @@ func cmdIssueShow(e *env, args []string) error {
 			issue.Description = &annotated
 		}
 		printIssue(e.out, issue)
+		if epic != nil {
+			c := epic.Counts
+			e.printf("\nEpic: %d issue(s), %d/%d done (%s) — see them with: mf epic show %s\n",
+				len(epic.Children), c.Done, c.Total, percent(c.DoneRatio), issue.IssueKey)
+		}
 		printAssets(e, assets)
 		printIssueMemories(e, memories)
+		printEpicMemories(e, key, epicMemories)
 		// The whole point of the hint is that nobody has to remember to ask
 		// whether someone left a note on the issue.
 		if *readComments && len(comments) > 0 {
@@ -190,7 +217,7 @@ func cmdIssueShow(e *env, args []string) error {
 
 func cmdIssueCreate(e *env, args []string) error {
 	fs := newFlagSet("issue create")
-	issueType := fs.String("type", "", "bug or requirement (required)")
+	issueType := fs.String("type", "", "bug, requirement or epic (required)")
 	title := fs.String("title", "", "issue title (required)")
 	description := fs.String("desc", "", "description")
 	descFile := fs.String("desc-file", "", "read description from file ('-' for stdin)")
@@ -204,6 +231,7 @@ func cmdIssueCreate(e *env, args []string) error {
 	var tags stringsFlag
 	fs.Var(&tags, "tag", "tag name (repeatable); missing tags are created")
 	notDup := fs.Bool("not-dup", false, "you checked the suspected duplicates and this is a separate issue (recorded in history)")
+	epic := fs.String("epic", "", "file the issue into this epic")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
@@ -231,6 +259,7 @@ func cmdIssueCreate(e *env, args []string) error {
 	setIfNonEmpty(&req.DocURL, *docURL)
 	req.Tags = tags
 	req.NotDuplicate = *notDup
+	req.Epic = *epic
 
 	// The response is the issue plus the suspected duplicates found at
 	// creation (MF-35); older servers send no similar_issues.
@@ -263,6 +292,12 @@ func cmdIssueCreate(e *env, args []string) error {
 		return nil
 	}
 	e.printf("created %s  [%s] %s %s%s\n", issue.IssueKey, issue.Type, issue.Priority, issue.Title, e.tagLabels(issue.Tags))
+	if *epic != "" {
+		if issue.EpicID == nil {
+			return fmt.Errorf("created %s, but this server predates epics (MF-39), so it is not in %s", issue.IssueKey, *epic)
+		}
+		e.printf("in epic %s\n", strings.ToUpper(*epic))
+	}
 	if similar := created.SimilarIssues; len(similar) > 0 {
 		if *notDup {
 			keys := make([]string, len(similar))
@@ -495,7 +530,8 @@ func cmdIssueDone(e *env, args []string) error {
 		e.printf("git_url  %s\n", deref(issue.GitURL))
 	}
 
-	if deref(issue.GitURL) == "" && !*force {
+	// An epic is finished by its issues' commits, not one of its own.
+	if deref(issue.GitURL) == "" && !*force && issue.Type != model.IssueTypeEpic {
 		return fmt.Errorf("%s has no git_url, and the completion workflow requires one.\n"+
 			"  record the commit:  mf issue attach-git %s <sha>\n"+
 			"  or do both at once: mf issue done %s --git <sha>\n"+
@@ -606,6 +642,34 @@ func cmdIssuePriority(e *env, args []string) error {
 		e.printf(" (own: %s, inherited through a critical dependency)", result.OwnPriority)
 	}
 	e.printf("\n")
+	return nil
+}
+
+// epicIssueList is `mf issues --epic KEY` with no project: the epic's issues
+// from every project, open ones unless --all or --status.
+func (e *env) epicIssueList(epicKey, status string, all bool) error {
+	d, raw, err := e.fetchEpic(epicKey)
+	if err != nil {
+		return err
+	}
+	if e.emitJSON(raw) {
+		return nil
+	}
+	var shown []model.Issue
+	for _, ch := range d.Children {
+		switch {
+		case status != "" && ch.Status != status:
+		case status == "" && !all && closedStatuses[ch.Status]:
+		default:
+			shown = append(shown, ch.Issue)
+		}
+	}
+	if len(shown) == 0 {
+		e.printf("no matching issues in epic %s (%d total — use --all to include done/closed)\n", d.Epic.IssueKey, len(d.Children))
+		return nil
+	}
+	e.issueTable(shown)
+	e.printf("\n%d shown of %d in epic %s (%d/%d done)\n", len(shown), len(d.Children), d.Epic.IssueKey, d.Counts.Done, d.Counts.Total)
 	return nil
 }
 

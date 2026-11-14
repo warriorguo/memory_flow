@@ -19,14 +19,14 @@ func NewIssueRepo(db database.DB) *IssueRepo {
 	return &IssueRepo{db: db}
 }
 
-var issueColumns = `id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id`
+var issueColumns = `id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id, epic_id`
 
 func scanIssue(row database.Row) (*model.Issue, error) {
 	var i model.Issue
 	err := row.Scan(
 		&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 		&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source,
-		&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID,
+		&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID, &i.EpicID,
 	)
 	if err != nil {
 		return nil, err
@@ -41,14 +41,14 @@ func (r *IssueRepo) Create(ctx context.Context, tx database.Tx, issueKey string,
 	}
 
 	query := fmt.Sprintf(`
-		INSERT INTO issues (id, issue_key, project_id, type, title, description, priority, assignee_id, creator_id, source, version, git_url, pr_url, doc_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO issues (id, issue_key, project_id, type, title, description, priority, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, epic_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING %s`, issueColumns)
 
 	row := tx.QueryRow(ctx, query,
 		uuid.New(), issueKey, projectID, req.Type, req.Title, req.Description, priority,
 		req.AssigneeID, req.CreatorID, req.Source, req.Version,
-		req.GitURL, req.PRURL, req.DocURL,
+		req.GitURL, req.PRURL, req.DocURL, req.EpicID,
 	)
 
 	issue, err := scanIssue(row)
@@ -124,6 +124,11 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 		args = append(args, "%"+escapeLike(*filter.Keyword)+"%")
 		argIdx++
 	}
+	if filter.EpicID != nil {
+		conditions = append(conditions, fmt.Sprintf("epic_id = $%d", argIdx))
+		args = append(args, *filter.EpicID)
+		argIdx++
+	}
 	// One subquery per tag: an issue must carry all of them.
 	for _, tagID := range filter.TagIDs {
 		conditions = append(conditions, fmt.Sprintf("id IN (SELECT issue_id FROM issue_tag_rel WHERE tag_id = $%d)", argIdx))
@@ -159,7 +164,7 @@ func (r *IssueRepo) List(ctx context.Context, filter model.IssueFilter) ([]model
 		err := rows.Scan(
 			&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 			&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source,
-			&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID,
+			&i.Version, &i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID, &i.EpicID,
 			&total,
 		)
 		if err != nil {

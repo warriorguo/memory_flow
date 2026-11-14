@@ -63,15 +63,16 @@ func main() {
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, cfg.MaxAssetBytes)
 	commentSvc := service.NewCommentService(commentRepo)
+	epicSvc := service.NewEpicService(issueRepo, issueHistoryRepo, memoryRepo, repository.NewEpicRepo(db))
 
 	// Initialize ID resolver (allows UUID or key in URL paths)
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
 	// Initialize handlers
 	projectHandler := handler.NewProjectHandler(projectSvc, resolver)
-	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc)
+	issueHandler := handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc).WithEpics(epicSvc)
 	progressHandler := handler.NewProgressHandler(progressSvc, resolver)
-	memoryHandler := handler.NewMemoryHandler(memorySvc)
+	memoryHandler := handler.NewMemoryHandler(memorySvc).WithEpics(epicSvc)
 	tagHandler := handler.NewTagHandler(tagRepo, resolver)
 	depHandler := handler.NewDependencyHandler(depSvc, resolver)
 	syncHandler := handler.NewSyncHandler(db, cfg.SyncToken)
@@ -89,6 +90,7 @@ func main() {
 		syncHandler,
 		assetHandler,
 		commentHandler,
+		handler.NewEpicHandler(epicSvc, resolver),
 	)
 
 	// Start server

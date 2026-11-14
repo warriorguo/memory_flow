@@ -20,8 +20,10 @@ Commands:
   projects                List projects
   project …               show | create | update | progress | archive
   issues <PROJECT_KEY>    List open issues in a project
-  issue …                 show | create | update | status | start | done |
-                          attach-git | history | priority | tag | dep
+  issue …                 show | context | create | similar | dup | update | status |
+                          start | done | attach-git | history | priority | tag | dep
+  epics <PROJECT_KEY>     List a project's epics with how far along each is
+  epic …                  show | create | add | rm | progress | close
   asset …                 add | list | get | replace | rm  (files attached to an issue)
   comment …               add | list | rm  (discussion on an issue)
   memories                Search memories
@@ -38,8 +40,8 @@ Global flags (accepted anywhere in the command line):
                           unread count 'mf issue show' reports
                           (default: $MF_ACTOR, else the OS user)
 
-Run 'mf help <topic>' for details: issue, project, asset, comment, memory, tag,
-workflow.
+Run 'mf help <topic>' for details: issue, epic, project, asset, comment, memory,
+tag, workflow.
 
 Examples:
   mf ctx
@@ -51,8 +53,11 @@ Examples:
 
 const issueUsage = `mf issue — bugs and requirements
 
-  mf issue list <PROJECT_KEY> [--status S] [--type bug|requirement] [--priority P0|P1|P2]
-                              [--assignee ID] [--keyword TEXT] [--tag NAME]… [--all] [--limit N] [--page N]
+  mf issue list <PROJECT_KEY> [--status S] [--type bug|requirement|epic] [--priority P0|P1|P2]
+                              [--assignee ID] [--keyword TEXT] [--tag NAME]… [--epic KEY]
+                              [--all] [--limit N] [--page N]
+  mf issue list --epic <EPIC_KEY> [--status S] [--all]
+      With --epic and no project key: the epic's issues from every project.
       Open issues only by default; --all or an explicit --status includes done/closed/rejected/duplicate.
       Tags follow each title as [name] (colored on a terminal). --tag is repeatable
       and every given tag must match: --tag room --tag enemy-ai.
@@ -60,11 +65,18 @@ const issueUsage = `mf issue — bugs and requirements
   mf issue show <ISSUE_KEY> [--deps] [--history] [--comments]
       Also lists the issue's assets, its recorded memories, and whether anyone
       has left comments you have not read. --comments prints the thread and
-      marks it read.
-  mf issue create <PROJECT_KEY> --type <bug|requirement> --title "…" [--desc "…"|--desc-file FILE]
+      marks it read. An issue in an epic also shows "epic KEY" and the epic's
+      shared memories, marked *new / *updated since you last read them.
+  mf issue context <ISSUE_KEY> [--start]
+      Pick-up read: the issue, its epic (description, sibling issues, blockers),
+      the epic's shared memories and the issue's own in full, assets and the
+      comment thread. Marks the shared memories and comments read; --start also
+      moves the issue to in_progress.
+  mf issue create <PROJECT_KEY> --type <bug|requirement|epic> --title "…" [--desc "…"|--desc-file FILE]
                                 [--priority P1] [--assignee ID] [--source S] [--version V]
                                 [--git-url URL] [--pr-url URL] [--doc-url URL] [--tag NAME]…
-      --tag is repeatable; tags that do not exist yet are created with a palette color.
+                                [--epic EPIC_KEY]
+      --epic files the issue straight into an epic. --tag is repeatable; tags that do not exist yet are created with a palette color.
       Never blocks on duplicates: when existing issues look like the same thing, they
       are listed after the "created" line under "Possible duplicates" (and in --json
       as similar_issues). --not-dup records that you checked them and this is separate.
@@ -100,6 +112,33 @@ long multi-line body:
   mf issue create MF --type bug --title "Search returns nothing" --desc-file - <<'EOF'
   Steps to reproduce…
   EOF
+`
+
+const epicUsage = `mf epic — epics (an issue of type epic that groups other issues)
+
+  mf epics <PROJECT_KEY> [--all]              Epics with done/total and %; --all adds closed ones
+  mf epic show <EPIC_KEY>                     Description, issues, progress, dependencies among
+                                              the issues, blocked issues, shared memories, assets
+  mf epic create <PROJECT_KEY> --title "…" [--desc …] [--priority P1] [--tag NAME]…
+  mf epic add <EPIC_KEY> <ISSUE_KEY>…         Issues may come from any project; one already in
+                                              another epic moves (an issue has at most one epic)
+  mf epic rm <ISSUE_KEY>…                     Take issues out of their epic
+  mf epic progress <EPIC_KEY> [--trend DAYS]  Status/priority/type counts, blocked issues, trend
+  mf epic close <EPIC_KEY>                    Mark done (no commit needed for an epic)
+
+Membership is not a dependency: no ordering, no priority inheritance. Done
+ratio counts done+closed over every issue except rejected and duplicate ones.
+"Blocked" means a critical depends_on (or blocks) on an issue not done yet.
+
+Shared memories: a memory recorded on the epic is visible from every issue in
+it ('mf issue show', 'mf issue context', 'mf memory search --issue').
+
+  mf memory add --epic <EPIC_OR_ISSUE_KEY> --title "…" --content "…"   [--new]
+      Write a conclusion back to the epic. Refused when the epic already has a
+      memory that seems to say the same thing — update that one instead
+      (mf memory update <ID>), or pass --new if it really is separate.
+  mf memory promote <MEMORY_ID> [--copy] [--force]
+      Lift a memory recorded on an issue to the issue's epic.
 `
 
 const projectUsage = `mf project — projects
@@ -173,7 +212,11 @@ const memoryUsage = `mf memory — recorded context
 
   mf memory add --title "…" --content "…"|--content-file FILE
                 [--type recall|write] [--project KEY] [--issue ISSUE_KEY]
+                [--epic EPIC_OR_ISSUE_KEY [--new]]
   mf memory search ["<KEYWORD>"] [--project KEY] [--type recall|write] [--limit N] [--full]
+  mf memory search --issue <ISSUE_KEY> [--full]
+      Everything the issue can see: its own memories and its epic's, labeled.
+  mf memory promote <MEMORY_ID> [--copy] [--force]   Lift an issue memory to its epic
   mf memory show <MEMORY_ID>
   mf memory update <MEMORY_ID> [--title "…"] [--content "…"|--content-file FILE]
   mf memory rm <MEMORY_ID>
@@ -181,7 +224,9 @@ const memoryUsage = `mf memory — recorded context
   recall  reusable project context — design decisions, root causes, constraints
   write   produced artifacts — drafts, task summaries, supplementary context
 
---issue attaches the memory to an issue and infers its project.
+--issue attaches the memory to an issue and infers its project. --epic records
+it on an epic (given the epic or any issue in it), shared with every issue of
+the epic, after checking it does not restate an existing epic memory.
 `
 
 const tagUsage = `mf tag — tags
@@ -226,7 +271,7 @@ Completing an issue:
   2. Record the commit and close, in one step:  mf issue done MF-1 --git HEAD
 
 'mf issue done' refuses to close an issue whose git_url is empty (--force
-overrides). --git accepts a full URL, a short sha, or any commit-ish such as
+overrides); epics are exempt. --git accepts a full URL, a short sha, or any commit-ish such as
 HEAD; the commit URL is built from the project's git_url, falling back to the
 origin remote of --repo (default: the current directory).
 `
@@ -237,6 +282,8 @@ func printUsage(w io.Writer, topic string) {
 		fmt.Fprint(w, issueUsage)
 	case "project", "projects":
 		fmt.Fprint(w, projectUsage)
+	case "epic", "epics":
+		fmt.Fprint(w, epicUsage)
 	case "asset", "assets":
 		fmt.Fprint(w, assetUsage)
 	case "comment", "comments":

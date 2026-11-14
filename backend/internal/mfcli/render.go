@@ -186,6 +186,9 @@ func printIssue(w io.Writer, issue *model.Issue) {
 		}
 		fmt.Fprintf(w, "  tags      %s\n", strings.Join(names, ", "))
 	}
+	if ep := issue.Epic; ep != nil {
+		fmt.Fprintf(w, "  epic      %s [%s] %s\n", ep.IssueKey, ep.Status, truncate(ep.Title, 60))
+	}
 	if d := issue.DuplicateOf; d != nil {
 		fmt.Fprintf(w, "  dup of    %s [%s] %s\n", d.IssueKey, d.Status, truncate(d.Title, 60))
 	}

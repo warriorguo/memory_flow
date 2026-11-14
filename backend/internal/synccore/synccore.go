@@ -59,6 +59,7 @@ type Snapshot struct {
 	Assets            []model.IssueAsset      `json:"assets"`
 	Comments          []model.IssueComment    `json:"comments"`
 	CommentReads      []model.CommentRead     `json:"comment_reads"`
+	MemoryReads       []model.MemoryRead      `json:"memory_reads"`
 }
 
 // ImportResult summarizes a merge.
@@ -114,6 +115,9 @@ func Export(ctx context.Context, db database.DB) (*Snapshot, error) {
 	if s.CommentReads, err = exportCommentReads(ctx, db); err != nil {
 		return nil, err
 	}
+	if s.MemoryReads, err = exportMemoryReads(ctx, db); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -146,6 +150,10 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 	for _, i := range s.Issues {
 		if _, err := db.Exec(ctx, issueDuplicateOfUpdate, i.ID, i.DuplicateOfID, ts(i.UpdatedAt)); err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("%v duplicate_of: %v", i.ID, err))
+		}
+		// epic_id likewise references another issue (MF-39).
+		if _, err := db.Exec(ctx, issueEpicUpdate, i.ID, i.EpicID, ts(i.UpdatedAt)); err != nil {
+			res.Errors = append(res.Errors, fmt.Sprintf("%v epic: %v", i.ID, err))
 		}
 	}
 	for _, h := range s.IssueHistory {
@@ -180,6 +188,12 @@ func Import(ctx context.Context, db database.DB, s *Snapshot) (*ImportResult, er
 	for _, cr := range s.CommentReads {
 		apply(ctx, db, res, commentReadInsert, cr.CommentID,
 			cr.CommentID, cr.Reader, ts(cr.ReadAt))
+	}
+	// Memory read state is mutable — a reader re-reads a changed memory — so
+	// the later read wins.
+	for _, mr := range s.MemoryReads {
+		apply(ctx, db, res, memoryReadUpsert, mr.MemoryID,
+			mr.MemoryID, mr.Reader, mr.ContentHash, ts(mr.ReadAt))
 	}
 	// Assets last: their rows reference issues, and the upsert drops the stored
 	// bytes whenever the incoming checksum differs, so the merge leaves behind an
@@ -317,6 +331,13 @@ ON CONFLICT(id) DO UPDATE SET
 WHERE excluded.updated_at > issues.updated_at`
 
 const issueDuplicateOfUpdate = `UPDATE issues SET duplicate_of_id = $2 WHERE id = $1 AND updated_at <= $3`
+
+const issueEpicUpdate = `UPDATE issues SET epic_id = $2 WHERE id = $1 AND updated_at <= $3`
+
+const memoryReadUpsert = `
+INSERT INTO memory_reads (memory_id, reader, content_hash, read_at) VALUES ($1,$2,$3,$4)
+ON CONFLICT(memory_id, reader) DO UPDATE SET content_hash=excluded.content_hash, read_at=excluded.read_at
+WHERE excluded.read_at > memory_reads.read_at`
 
 const memoryUpsert = `
 INSERT INTO memories (id, project_id, type, title, content, source_object_type, source_object_id, creator_id, created_at, updated_at)

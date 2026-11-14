@@ -14,12 +14,13 @@ description: >
   "create project", "update issue", "mark as done", "attach a file", "upload the screenshot",
   "get the assets for this issue", "replace the reference art", "comment on this issue",
   "any new comments", "reply on the ticket", "is this already filed", "check for duplicates",
-  "mark as duplicate".
+  "mark as duplicate", "create an epic", "epic progress", "add to the epic", "pick up this issue",
+  "record this for the whole epic".
 compatibility: Uses the `mf` CLI, which reaches the remote Memory Flow API or falls back to the local standalone app
 allowed-tools: Bash(mf:*)
 metadata:
   author: warriorguo
-  version: "8.0"
+  version: "9.0"
   service-url: "https://memory-flow.local.playquota.com"
   local-fallback-url: "http://127.0.0.1:8080"
 ---
@@ -107,6 +108,12 @@ work?". Alongside the fields it lists:
 - the **memories** recorded against it (what someone already figured out),
 - and a **comment line** — `Comments: 3, 1 unread for <you>` — when someone has
   left a note you have not read.
+- For an issue in an epic: an `epic` field and an **Epic memories** block — the
+  decisions shared across the epic, marked `*new` / `*updated` since you last
+  read them (see [Epics](#epics)).
+
+To pick an issue up, prefer `mf issue context KEY` — one read with everything
+(see [Epics](#epics)).
 
 **Read unread comments before starting work on an issue.** A comment is how a
 human redirects the work after the description was written; acting on a stale
@@ -155,6 +162,11 @@ or override:
 > - #2 depends on #1 (critical) — cannot start without #1's API
 > - #3 depends on #1 (recommended) — related but not blocking
 
+When the breakdown is a large requirement split into several issues (an
+"总票 + 子票" shape), propose an **epic** for it: create the epic first, then
+file each issue with `--epic`. Decisions every issue needs go on the epic as
+memories, not into one issue's memory (see [Epics](#epics)).
+
 **Step 3 — Create**, in dependency order (dependencies first):
 
 ```bash
@@ -182,7 +194,7 @@ tag filter:
 mf issue create OZX --type bug --title "第三关 Boss 卡墙" --tag room --tag enemy-ai
 ```
 Optional: `--desc`/`--desc-file`, `--priority` (default P2), `--assignee`,
-`--source`, `--version`, `--git-url`, `--pr-url`, `--doc-url`.
+`--source`, `--version`, `--git-url`, `--pr-url`, `--doc-url`, `--epic EPIC_KEY`.
 
 Priority: **P0** blocking, fix immediately · **P1** important, not blocking the
 core flow · **P2** normal, schedulable.
@@ -271,6 +283,70 @@ whenever the reason is "already filed" — stats and filters tell them apart.
 ```bash
 mf issue history MF-1
 ```
+
+---
+
+## Epics
+
+An epic is an issue of type `epic` that groups other issues — from any project
+(an OZX epic can hold an OAE issue). An issue belongs to at most one epic.
+Membership is **not** a dependency: no ordering, no priority inheritance.
+
+```bash
+mf epic create OZX --title "无尽模式" --desc-file design.md --priority P1
+mf issue create OZX --type requirement --title "无尽波次生成" --epic OZX-2000
+mf epic add OZX-2000 OZX-1990 OAE-12     # add existing issues (one in another epic moves)
+mf epic rm OAE-12                        # take an issue out
+mf epics OZX                             # each epic with done/total and %
+mf epic show OZX-2000                    # issues, progress, deps among them, blocked ones, shared memories
+mf epic progress OZX-2000 --trend 14     # counts, blocked issues, daily trend
+mf issues --epic OZX-2000                # the epic's open issues, every project
+mf epic close OZX-2000                   # done; an epic needs no commit
+```
+
+Done ratio = done + closed over every issue except rejected / duplicate.
+**Blocked** = an open issue whose critical `depends_on` (or a `blocks` pointing
+at it) is not done yet — the epic view lists them so you can tell which issue
+can actually start.
+
+### Shared memories: pull at start, write back at the end
+
+A memory recorded **on the epic** is visible from every issue in it. This is
+where decisions that span the epic live ("联机死亡＝倒地到下一段复活"), so an
+agent working on one issue does not re-derive or contradict them.
+
+**Starting an issue** — one command pulls everything it can draw on:
+
+```bash
+mf issue context OZX-2003 --start
+```
+
+It prints the issue, the epic's description, sibling issues and blockers, the
+epic memories in full (with `[NEW]` / `[UPDATED]` since you last read them),
+the issue's own memories, assets, and the comment thread; then marks the epic
+memories and comments read and (with `--start`) moves the issue to in_progress.
+Relay any `[UPDATED]` epic memory and any unread comment to the user before
+writing code.
+
+**Finishing an issue** — write back conclusions other issues of the epic need:
+
+```bash
+mf memory add --epic OZX-2003 --title "Boss 血量公式" --content "hp = 100 * 1.15^wave"
+mf memory promote <MEMORY_ID>            # or lift a memory already on the issue (--copy keeps it there)
+```
+
+`--epic` takes the epic or any issue in it. Before recording, the server checks
+the epic's existing memories; if one seems to state the same thing, the write
+is **refused** and the candidates are listed. Then:
+
+- same decision, changed or refined → `mf memory update <ID> --content …`
+  (everyone who read the old version sees it as `updated`);
+- genuinely separate → rerun with `--new`.
+
+Never leave two epic memories stating one decision two ways. Knowledge that
+only matters to one issue stays on that issue (`mf memory add --issue`).
+
+`mf memory search --issue KEY` lists what an issue can see, labeled by origin.
 
 ---
 
@@ -382,7 +458,9 @@ mf memory rm <MEMORY_ID>
 - **recall** — reusable project context: design decisions, root causes, constraints, decision records
 - **write** — produced artifacts: drafts, task summaries, supplementary context
 
-`--issue` attaches the memory to an issue and infers its project.
+`--issue` attaches the memory to an issue and infers its project. `--epic`
+records it on an epic, shared with all the epic's issues (conflict-checked —
+see [Epics](#epics)).
 
 ---
 
@@ -587,6 +665,10 @@ still want it.
 | Project progress | `mf project progress <KEY> [--trend N]` |
 | List issues | `mf issues <PROJECT_KEY> [filters]` |
 | Show issue | `mf issue show <KEY> [--deps] [--history] [--comments]` |
+| Pick up an issue (everything, marks read) | `mf issue context <KEY> [--start]` |
+| Epics | `mf epics <PROJECT_KEY>` · `mf epic show\|create\|add\|rm\|progress\|close …` |
+| Epic's issues | `mf issues --epic <EPIC_KEY>` · `mf issue create … --epic <EPIC_KEY>` |
+| Write back to the epic | `mf memory add --epic <KEY> …` · `mf memory promote <ID>` |
 | Check for duplicates first | `mf issue similar <PROJECT_KEY> --title "…" [--desc "…"]` · `mf issue similar <KEY>` |
 | Create issue | `mf issue create <PROJECT_KEY> --type T --title "…" [--not-dup]` |
 | Close as duplicate | `mf issue dup <KEY> <TARGET_KEY>` |
@@ -603,7 +685,7 @@ still want it.
 | Pull every asset | `mf asset get <KEY> --all -o <DIR>` |
 | Memories | `mf memory add\|search\|show\|update\|rm …` |
 | Tags | `mf tags` · `mf tag create\|update` · `mf issue tag\|untag` · `mf issues <KEY> --tag T` |
-| Help | `mf help [issue\|project\|asset\|comment\|memory\|tag\|workflow]` |
+| Help | `mf help [issue\|epic\|project\|asset\|comment\|memory\|tag\|workflow]` |
 
 Every command accepts an issue key (`MF-1`) or project key (`MF`) wherever an
 identifier is expected; UUIDs also work.
@@ -620,6 +702,7 @@ identifier is expected; UUIDs also work.
 6. **Summarize progress in prose**, don't dump the table
 7. **Analyze before filing**: check `mf issue similar` first, then decide one issue vs. several *before* creating anything; present the decomposition and wait for confirmation
 7a. **Read "Possible duplicates" after creating** — if a `likely` hit is the same issue, `mf issue dup` the new one into it; "already filed" is `duplicate`, never `rejected`
+7b. **Big requirement, many issues → an epic**; decisions shared across it go on the epic (`mf memory add --epic`), never only on one issue
 8. **Set dependencies after batch creation**: `critical` for hard blockers, `recommended` for soft associations
 9. **Completing issues**: `mf issue done <KEY> --git HEAD`, with `[ISSUE_KEY] description` in the commit message
 10. **Check for unread comments before acting on an issue** — `mf issue show` says whether there are any; a human's note outranks a stale description

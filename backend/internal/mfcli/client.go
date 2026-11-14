@@ -3,6 +3,7 @@ package mfcli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -282,6 +283,25 @@ func asConnError(err error, target **connError) bool {
 	return false
 }
 
+// httpError is a non-2xx API response. It keeps the body, so a caller can
+// read structured detail (a 409's conflicting memories) beyond the message.
+type httpError struct {
+	Status int
+	Raw    []byte
+	msg    string
+}
+
+func (e *httpError) Error() string { return e.msg }
+
+// asHTTPError reports whether err is an API response with the given status.
+func asHTTPError(err error, status int) (*httpError, bool) {
+	var he *httpError
+	if errors.As(err, &he) && he.Status == status {
+		return he, true
+	}
+	return nil, false
+}
+
 // apiError turns a non-2xx response into a readable error, unwrapping the
 // API's {"error": "..."} envelope when present.
 func apiError(status int, method, path string, raw []byte) error {
@@ -289,7 +309,7 @@ func apiError(status int, method, path string, raw []byte) error {
 		Error string `json:"error"`
 	}
 	if err := json.Unmarshal(raw, &env); err == nil && env.Error != "" {
-		return fmt.Errorf("%s %s: %s (HTTP %d)", method, path, env.Error, status)
+		return &httpError{Status: status, Raw: raw, msg: fmt.Sprintf("%s %s: %s (HTTP %d)", method, path, env.Error, status)}
 	}
 	msg := strings.TrimSpace(string(raw))
 	if len(msg) > 300 {
@@ -298,7 +318,7 @@ func apiError(status int, method, path string, raw []byte) error {
 	if msg == "" {
 		msg = http.StatusText(status)
 	}
-	return fmt.Errorf("%s %s: %s (HTTP %d)", method, path, msg, status)
+	return &httpError{Status: status, Raw: raw, msg: fmt.Sprintf("%s %s: %s (HTTP %d)", method, path, msg, status)}
 }
 
 // get/post/put/patch/del decode the `data` field of the response envelope into

@@ -236,19 +236,21 @@ func buildAPIRouter(db database.DB, syncToken string) chi.Router {
 	depSvc := service.NewDependencyService(depRepo, issueRepo, projectRepo)
 	assetSvc := service.NewAssetService(assetRepo, maxAssetBytes())
 	commentSvc := service.NewCommentService(commentRepo)
+	epicSvc := service.NewEpicService(issueRepo, issueHistoryRepo, memoryRepo, repository.NewEpicRepo(db))
 
 	resolver := handler.NewIDResolver(projectSvc, issueSvc)
 
 	return handler.NewRouter(
 		handler.NewProjectHandler(projectSvc, resolver),
-		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc),
+		handler.NewIssueHandler(issueSvc, tagRepo, resolver).WithComments(commentSvc).WithEpics(epicSvc),
 		handler.NewProgressHandler(progressSvc, resolver),
-		handler.NewMemoryHandler(memorySvc),
+		handler.NewMemoryHandler(memorySvc).WithEpics(epicSvc),
 		handler.NewTagHandler(tagRepo, resolver),
 		handler.NewDependencyHandler(depSvc, resolver),
 		handler.NewSyncHandler(db, syncToken),
 		handler.NewAssetHandler(assetSvc, issueSvc, resolver),
 		handler.NewCommentHandler(commentSvc, resolver),
+		handler.NewEpicHandler(epicSvc, resolver),
 	)
 }
 

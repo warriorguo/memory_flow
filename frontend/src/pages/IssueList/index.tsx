@@ -9,10 +9,11 @@ import PriorityBadge from '../../components/PriorityBadge';
 import TagSelector from '../../components/TagSelector';
 import SimilarIssuesHint from '../../components/SimilarIssues';
 import TagManager from '../../components/TagManager';
+import EpicSelect from '../../components/EpicSelect';
 import { TagLabels } from '../../components/TagLabel';
 import type { IssueFilter, CreateIssueRequest, Issue, Tag } from '../../types/issue';
 import type { IssueStatus, IssueType, Priority } from '../../types/common';
-import { ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
+import { ISSUE_STATUS_LABELS, ISSUE_TYPE_LABELS, PRIORITY_LABELS } from '../../types/common';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -66,7 +67,7 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
       title: '类型',
       dataIndex: 'type',
       width: 80,
-      render: (t: string) => t === 'requirement' ? '需求' : '缺陷',
+      render: (t: IssueType) => ISSUE_TYPE_LABELS[t] ?? t,
     },
     {
       title: '优先级',
@@ -105,10 +106,7 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
             allowClear
             style={{ width: 100 }}
             onChange={(v) => setFilter((f) => ({ ...f, type: v as IssueType, page: 1 }))}
-            options={[
-              { label: '需求', value: 'requirement' },
-              { label: '缺陷', value: 'bug' },
-            ]}
+            options={Object.entries(ISSUE_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))}
           />
           <Select
             placeholder="状态"
@@ -123,6 +121,12 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
             style={{ width: 130 }}
             onChange={(v) => setFilter((f) => ({ ...f, priority: v as Priority, page: 1 }))}
             options={Object.entries(PRIORITY_LABELS).map(([k, v]) => ({ label: v, value: k }))}
+          />
+          <EpicSelect
+            projectId={projectId}
+            includeClosed
+            style={{ width: 180 }}
+            onChange={(v) => setFilter((f) => ({ ...f, epic: v || undefined, page: 1 }))}
           />
           <TagSelector
             placeholder="标签"
@@ -164,7 +168,16 @@ const IssueListView: React.FC<Props> = ({ projectId: propProjectId }) => {
       >
         <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} initialValues={{ type: 'requirement', priority: 'P2' }}>
           <Form.Item name="type" label="类型" rules={[{ required: true }]}>
-            <Select options={[{ label: '需求', value: 'requirement' }, { label: '缺陷', value: 'bug' }]} />
+            <Select options={Object.entries(ISSUE_TYPE_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(a, b) => a.type !== b.type}>
+            {({ getFieldValue }) =>
+              getFieldValue('type') !== 'epic' && (
+                <Form.Item name="epic" label="所属 Epic">
+                  <EpicSelect projectId={projectId} placeholder="不属于任何 Epic" />
+                </Form.Item>
+              )
+            }
           </Form.Item>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}>
             <Input />

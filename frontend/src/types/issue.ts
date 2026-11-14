@@ -24,6 +24,9 @@ export interface Issue {
   duplicate_of_id?: string;
   duplicate_of?: IssueRef;
   duplicates?: IssueRef[];
+  // MF-39: the epic this issue belongs to; the ref comes with a single-issue read.
+  epic_id?: string;
+  epic?: IssueRef;
 }
 
 /** An existing issue that may be the same as a draft (MF-35). */
@@ -77,6 +80,8 @@ export interface CreateIssueRequest {
   tag_ids?: string[];
   // The filer saw the suspected duplicates and judged this a separate issue.
   not_duplicate?: boolean;
+  // MF-39: file the issue into this epic (key or id).
+  epic?: string;
 }
 
 export interface UpdateIssueRequest {
@@ -102,6 +107,8 @@ export interface IssueFilter {
   // Tag ids or names; an issue must carry every one (AND).
   tag?: string[];
   keyword?: string;
+  // MF-39: only the issues of this epic (key or id).
+  epic?: string;
   page?: number;
   page_size?: number;
 }

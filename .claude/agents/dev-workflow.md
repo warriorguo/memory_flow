@@ -50,7 +50,21 @@ before starting: a `critical` dependency that isn't `done` blocks the work.
 
 ## Step 2 — Read What Has Already Been Said
 
-`mf issue show` reports two things the description does not: the memories
+Start with the pick-up read — it pulls everything the issue can draw on in one
+command, and moves it to in_progress:
+
+```bash
+mf issue context ISSUE-KEY --start
+```
+
+It prints the issue; if the issue belongs to an **epic**, the epic's
+description, its other issues and any blocker of this one; the epic's shared
+memories in full; the issue's own memories; assets; and the comment thread.
+Epic memories marked `[UPDATED]` changed since you last read them — a shared
+decision moved under you. Relay those and any unread comment before coding.
+(With `--start` you can skip Step 3.)
+
+`mf issue show` reports the same signals in short form: the memories
 recorded against the issue (what someone already worked out) and whether anyone
 has left comments you have not read:
 
@@ -169,6 +183,21 @@ so the description's `asset:` reference stays valid:
 mf asset replace ISSUE-KEY enemy_ref.png ~/art/enemy_v2.png
 ```
 
+### Write back to the epic
+
+If the issue is in an epic, record conclusions the epic's *other* issues need
+(a formula, a rule, an interface decision) on the epic, not just on this issue:
+
+```bash
+mf memory add --epic ISSUE-KEY --title "Boss 血量公式" --content "hp = 100 * 1.15^wave"
+mf memory promote <MEMORY_ID>     # lift a memory already on the issue
+```
+
+If the server refuses because an epic memory already says the same thing,
+update that memory (`mf memory update <ID> --content …`) when it is the same
+decision; pass `--new` only when it is genuinely separate. Never leave two
+versions of one decision side by side.
+
 Attach files; record conclusions as memories (`mf memory add`); leave messages
 for the next reader as comments (`mf comment add`). A crash log is an asset,
 what you learned from it is a memory, and "I could not reproduce this on 1.4.3"
@@ -284,6 +313,8 @@ duplicate   → todo
 ```
 
 `duplicate` is entered only with `mf issue dup KEY TARGET_KEY` (it needs a target).
+Epics (`type epic`) follow the same graph; `mf epic close KEY` finishes one
+without a commit.
 
 `mf issue status KEY TARGET` walks intermediate hops automatically (closing a
 `todo` issue performs todo → in_progress → done).

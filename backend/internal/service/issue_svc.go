@@ -12,7 +12,7 @@ import (
 	"github.com/warriorguo/memory_flow/backend/internal/repository"
 )
 
-var validIssueTypes = map[string]bool{"requirement": true, "bug": true}
+var validIssueTypes = map[string]bool{"requirement": true, "bug": true, model.IssueTypeEpic: true}
 var validPriorities = map[string]bool{"P0": true, "P1": true, "P2": true}
 
 type IssueService struct {
@@ -73,7 +73,7 @@ func (s *IssueService) CreateWithSimilar(ctx context.Context, projectID uuid.UUI
 		return nil, nil, fmt.Errorf("issue type is required")
 	}
 	if !validIssueTypes[req.Type] {
-		return nil, nil, fmt.Errorf("invalid issue type: must be 'requirement' or 'bug'")
+		return nil, nil, fmt.Errorf("invalid issue type: must be 'requirement', 'bug' or 'epic'")
 	}
 	if req.Title == "" {
 		return nil, nil, fmt.Errorf("issue title is required")
@@ -140,7 +140,7 @@ func (s *IssueService) List(ctx context.Context, filter model.IssueFilter) ([]mo
 
 func (s *IssueService) Update(ctx context.Context, id uuid.UUID, req model.UpdateIssueRequest, operatorID *string) (*model.Issue, error) {
 	if req.Type != nil && !validIssueTypes[*req.Type] {
-		return nil, fmt.Errorf("invalid issue type: must be 'requirement' or 'bug'")
+		return nil, fmt.Errorf("invalid issue type: must be 'requirement', 'bug' or 'epic'")
 	}
 	if req.Priority != nil && !validPriorities[*req.Priority] {
 		return nil, fmt.Errorf("invalid priority: must be 'P0', 'P1', or 'P2'")

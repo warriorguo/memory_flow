@@ -53,6 +53,10 @@ type Issue struct {
 	// issue this one was closed into, and the issues closed into this one.
 	DuplicateOf *IssueRef  `json:"duplicate_of,omitempty"`
 	Duplicates  []IssueRef `json:"duplicates,omitempty"`
+	// EpicID is the epic (an issue of type "epic") this issue belongs to, if
+	// any (MF-39). Epic is filled on the single-issue read.
+	EpicID *uuid.UUID `json:"epic_id,omitempty"`
+	Epic   *IssueRef  `json:"epic,omitempty"`
 }
 
 // MarkDuplicateRequest closes an issue as a duplicate of Of (a key or id).
@@ -298,6 +302,10 @@ type CreateIssueRequest struct {
 	// NotDuplicate records that the filer looked at the suspected duplicates
 	// and judged this a separate issue; the judgement lands in the history.
 	NotDuplicate bool `json:"not_duplicate,omitempty"`
+	// Epic files the issue straight into an epic (its key or id, MF-39). The
+	// handler resolves it into EpicID.
+	Epic   string     `json:"epic,omitempty"`
+	EpicID *uuid.UUID `json:"epic_id,omitempty"`
 }
 
 type UpdateIssueRequest struct {
@@ -339,6 +347,10 @@ type CreateMemoryRequest struct {
 	SourceObjectType *string    `json:"source_object_type"`
 	SourceObjectID   *uuid.UUID `json:"source_object_id"`
 	CreatorID        *string    `json:"creator_id"`
+	// CheckConflicts refuses the memory when its source object already holds
+	// one that seems to say the same thing (MF-39: epic write-back must not
+	// leave two versions of one decision side by side).
+	CheckConflicts bool `json:"check_conflicts,omitempty"`
 }
 
 type UpdateMemoryRequest struct {
@@ -410,7 +422,9 @@ type IssueFilter struct {
 	CreatorID  *string
 	Keyword    *string `json:"keyword"`
 	// TagIDs narrows to issues carrying every one of these tags (AND).
-	TagIDs   []uuid.UUID
+	TagIDs []uuid.UUID
+	// EpicID narrows to the issues of one epic (MF-39).
+	EpicID   *uuid.UUID
 	Page     int
 	PageSize int
 }

@@ -16,6 +16,8 @@ func cmdMemoryAdd(e *env, args []string) error {
 	contentFile := fs.String("content-file", "", "read content from file ('-' for stdin)")
 	project := fs.String("project", "", "project key to attach the memory to")
 	issue := fs.String("issue", "", "issue key this memory came out of")
+	epic := fs.String("epic", "", "record it on this epic (or on the epic of this issue), shared with all its issues")
+	isNew := fs.Bool("new", false, "with --epic: record it even if the epic has a similar memory")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
@@ -42,6 +44,25 @@ func cmdMemoryAdd(e *env, args []string) error {
 
 	req := model.CreateMemoryRequest{Type: *memType, Title: *title, Content: body}
 
+	if *epic != "" && *issue != "" {
+		return fmt.Errorf("pass --epic or --issue, not both")
+	}
+	// --epic accepts the epic itself or any issue in it.
+	if *epic != "" {
+		target, _, err := e.fetchIssue(*epic)
+		if err != nil {
+			return err
+		}
+		if target.Type != model.IssueTypeEpic {
+			if target.Epic == nil {
+				return fmt.Errorf("%s is not an epic and does not belong to one", target.IssueKey)
+			}
+			*issue = target.Epic.IssueKey
+		} else {
+			*issue = target.IssueKey
+		}
+		req.CheckConflicts = !*isNew
+	}
 	// An issue reference implies its project, so --issue alone is enough.
 	if *issue != "" {
 		target, _, err := e.fetchIssue(*issue)
@@ -71,9 +92,13 @@ func cmdMemoryAdd(e *env, args []string) error {
 	var memory model.MemoryResponse
 	raw, err := e.client.post("/api/v1/memories", req, &memory)
 	if err != nil {
-		return err
+		return printConflicts(e, err, "rerun with --new")
 	}
 	if e.emitJSON(raw) {
+		return nil
+	}
+	if *epic != "" {
+		e.printf("recorded %s memory %s on epic %s: %s\n", memory.Type, memory.ID, *issue, memory.Title)
 		return nil
 	}
 	e.printf("recorded %s memory %s: %s\n", memory.Type, memory.ID, memory.Title)
@@ -88,9 +113,16 @@ func cmdMemoryList(e *env, args []string) error {
 	limit := fs.Int("limit", 20, "max memories to show")
 	page := fs.Int("page", 1, "page number")
 	full := fs.Bool("full", false, "print full content instead of a table")
+	issueKey := fs.String("issue", "", "memories an issue can see: its own and its epic's")
 	pos, err := parseArgs(fs, args)
 	if err != nil {
 		return err
+	}
+	if *issueKey != "" {
+		if len(pos) > 0 || *keyword != "" || *project != "" {
+			return fmt.Errorf("--issue lists everything the issue can see; it does not combine with a keyword or --project")
+		}
+		return cmdIssueMemories(e, *issueKey, *full)
 	}
 	// `mf memory search "some words"` is accepted as shorthand for --keyword.
 	if len(pos) > 0 && *keyword == "" {

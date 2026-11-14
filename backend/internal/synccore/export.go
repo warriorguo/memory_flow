@@ -29,7 +29,7 @@ func exportProjects(ctx context.Context, db database.DB) ([]model.Project, error
 }
 
 func exportIssues(ctx context.Context, db database.DB) ([]model.Issue, error) {
-	rows, err := db.Query(ctx, `SELECT id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id FROM issues`)
+	rows, err := db.Query(ctx, `SELECT id, issue_key, project_id, type, title, description, priority, status, assignee_id, creator_id, source, version, git_url, pr_url, doc_url, created_at, updated_at, duplicate_of_id, epic_id FROM issues`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func exportIssues(ctx context.Context, db database.DB) ([]model.Issue, error) {
 		var i model.Issue
 		if err := rows.Scan(&i.ID, &i.IssueKey, &i.ProjectID, &i.Type, &i.Title, &i.Description,
 			&i.Priority, &i.Status, &i.AssigneeID, &i.CreatorID, &i.Source, &i.Version,
-			&i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID); err != nil {
+			&i.GitURL, &i.PRURL, &i.DocURL, &i.CreatedAt, &i.UpdatedAt, &i.DuplicateOfID, &i.EpicID); err != nil {
 			return nil, err
 		}
 		out = append(out, i)
@@ -185,6 +185,25 @@ func exportCommentReads(ctx context.Context, db database.DB) ([]model.CommentRea
 			return nil, err
 		}
 		out = append(out, cr)
+	}
+	return out, rows.Err()
+}
+
+// exportMemoryReads carries which version of each memory a reader last read
+// (MF-39), so an epic memory read on one instance is not "changed" on the other.
+func exportMemoryReads(ctx context.Context, db database.DB) ([]model.MemoryRead, error) {
+	rows, err := db.Query(ctx, `SELECT memory_id, reader, content_hash, read_at FROM memory_reads`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.MemoryRead
+	for rows.Next() {
+		var mr model.MemoryRead
+		if err := rows.Scan(&mr.MemoryID, &mr.Reader, &mr.ContentHash, &mr.ReadAt); err != nil {
+			return nil, err
+		}
+		out = append(out, mr)
 	}
 	return out, rows.Err()
 }

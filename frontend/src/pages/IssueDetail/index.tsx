@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Alert, Descriptions, Button, Card, List, Modal, Form, Input, Select, Tag, Timeline, Space, Spin, message } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Alert, Descriptions, Button, Card, List, Modal, Form, Input, Popconfirm, Select, Tag, Timeline, Space, Spin, message } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -7,7 +7,9 @@ import { getIssue, updateIssue, transitionIssueStatus, getIssueHistory, findSimi
 import { SimilarIssueList } from '../../components/SimilarIssues';
 import { listAssets } from '../../api/asset';
 import { listComments } from '../../api/comment';
-import { listMemories } from '../../api/memory';
+import { listIssueMemories, markMemoriesRead, promoteMemory, setIssueEpic } from '../../api/epic';
+import EpicPanel from '../../components/EpicPanel';
+import EpicSelect from '../../components/EpicSelect';
 import StatusTag from '../../components/StatusTag';
 import PriorityBadge from '../../components/PriorityBadge';
 import Markdown from '../../components/Markdown';
@@ -16,7 +18,8 @@ import CommentPanel from '../../components/CommentPanel';
 import DependencyPanel from '../../components/DependencyPanel';
 import TagSelector from '../../components/TagSelector';
 import { TagLabels } from '../../components/TagLabel';
-import { ALLOWED_TRANSITIONS, CAN_MARK_DUPLICATE, ISSUE_STATUS_LABELS, PRIORITY_LABELS } from '../../types/common';
+import { ALLOWED_TRANSITIONS, CAN_MARK_DUPLICATE, ISSUE_STATUS_LABELS, ISSUE_TYPE_LABELS, PRIORITY_LABELS } from '../../types/common';
+import type { IssueMemory } from '../../types/epic';
 import type { IssueStatus } from '../../types/common';
 import dayjs from 'dayjs';
 
@@ -28,6 +31,8 @@ const IssueDetail: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [dupTarget, setDupTarget] = useState('');
+  const [epicOpen, setEpicOpen] = useState(false);
+  const [epicTarget, setEpicTarget] = useState<string | undefined>();
   const [form] = Form.useForm();
 
   const { data: issue, isLoading } = useQuery({
@@ -57,12 +62,73 @@ const IssueDetail: React.FC = () => {
     enabled: !!id,
   });
 
-  // Memories point at their source object, so the issue's UUID is the key —
-  // not the issue key in the URL.
-  const { data: memories } = useQuery({
-    queryKey: ['issueMemories', issue?.id],
-    queryFn: () => listMemories({ source_object_id: issue!.id, page_size: 50 }),
-    enabled: !!issue?.id,
+  // The issue's own memories plus, when it is in an epic, the epic's shared
+  // ones with this reader's read state (MF-39).
+  const { data: allMemories = [] } = useQuery({
+    queryKey: ['issueMemories', id],
+    queryFn: () => listIssueMemories(id!),
+    enabled: !!id,
+  });
+  const ownMemories = allMemories.filter((m) => m.scope === 'issue');
+  const epicMemories = allMemories.filter((m) => m.scope === 'epic');
+
+  // Like comments: remember which shared memories were new or changed when the
+  // page opened, then mark them read — the tags stay until the next visit.
+  const [memSnapshot, setMemSnapshot] = useState<{ key?: string; marks: Record<string, 'new' | 'updated'> }>({ marks: {} });
+  if (allMemories.length > 0 && memSnapshot.key !== id) {
+    const marks: Record<string, 'new' | 'updated'> = {};
+    for (const m of epicMemories) {
+      if (m.updated) marks[m.id] = 'updated';
+      else if (m.unread) marks[m.id] = 'new';
+    }
+    setMemSnapshot({ key: id, marks });
+  }
+  useEffect(() => {
+    const changed = epicMemories.filter((m) => m.unread || m.updated);
+    // A failed receipt only means the tags show again next time.
+    if (changed.length) markMemoriesRead(changed).catch(() => undefined);
+  }, [allMemories]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const epicMutation = useMutation({
+    mutationFn: (epic: string) => setIssueEpic(id!, epic),
+    onSuccess: (res) => {
+      const now = res.issue.epic_id ? epicTarget : undefined;
+      message.success(now ? `已加入 ${now}` : `已移出 ${res.previous?.issue_key ?? 'Epic'}`);
+      queryClient.invalidateQueries({ queryKey: ['issue', id] });
+      queryClient.invalidateQueries({ queryKey: ['issueMemories', id] });
+      queryClient.invalidateQueries({ queryKey: ['issueHistory', id] });
+      queryClient.invalidateQueries({ queryKey: ['epic'] });
+      queryClient.invalidateQueries({ queryKey: ['epics'] });
+      setEpicOpen(false);
+    },
+    onError: (err: { response?: { data?: { error?: string } } }) => message.error(err.response?.data?.error ?? '操作失败'),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: ({ m, force }: { m: IssueMemory; force?: boolean }) => promoteMemory(m.id, false, force),
+    onSuccess: (res) => {
+      message.success(`已提升到 ${res.epic}，Epic 内的其他工作项都能看到`);
+      queryClient.invalidateQueries({ queryKey: ['issueMemories'] });
+    },
+    onError: (err: { response?: { status?: number; data?: { error?: string; conflicts?: { title: string }[] } } }, vars) => {
+      const conflicts = err.response?.data?.conflicts;
+      if (err.response?.status === 409 && conflicts?.length) {
+        Modal.confirm({
+          title: 'Epic 上已有相似的 Memory',
+          content: (
+            <div>
+              <p>这条结论可能和下面的 Epic Memory 是同一件事。同一决策请直接编辑那一条，避免出现两种说法。</p>
+              <ul>{conflicts.map((c) => <li key={c.title}>{c.title}</li>)}</ul>
+            </div>
+          ),
+          okText: '仍然提升',
+          cancelText: '取消',
+          onOk: () => promoteMutation.mutate({ m: vars.m, force: true }),
+        });
+        return;
+      }
+      message.error(err.response?.data?.error ?? '操作失败');
+    },
   });
 
   // The comments that were unread when this issue was opened. CommentPanel marks
@@ -170,7 +236,7 @@ const IssueDetail: React.FC = () => {
         }
       >
         <Descriptions column={2} bordered>
-          <Descriptions.Item label="类型">{issue.type === 'requirement' ? '需求' : '缺陷'}</Descriptions.Item>
+          <Descriptions.Item label="类型">{ISSUE_TYPE_LABELS[issue.type] ?? issue.type}</Descriptions.Item>
           <Descriptions.Item label="优先级"><PriorityBadge priority={issue.priority} /></Descriptions.Item>
           <Descriptions.Item label="状态">
             <StatusTag status={issue.status} />
@@ -181,6 +247,22 @@ const IssueDetail: React.FC = () => {
               </span>
             )}
           </Descriptions.Item>
+          {issue.type !== 'epic' && (
+            <Descriptions.Item label="所属 Epic" span={2}>
+              <Space>
+                {issue.epic ? (
+                  <span>
+                    <a onClick={() => navigate(`/issues/${issue.epic!.issue_key}`)}>{issue.epic.issue_key}</a> {issue.epic.title}
+                  </span>
+                ) : (
+                  '-'
+                )}
+                <Button size="small" type="link" onClick={() => { setEpicTarget(issue.epic?.issue_key); setEpicOpen(true); }}>
+                  {issue.epic ? '更改' : '加入 Epic'}
+                </Button>
+              </Space>
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label="指派人">{issue.assignee_id || '-'}</Descriptions.Item>
           <Descriptions.Item label="创建人">{issue.creator_id || '-'}</Descriptions.Item>
           <Descriptions.Item label="来源">{issue.source || '-'}</Descriptions.Item>
@@ -234,12 +316,56 @@ const IssueDetail: React.FC = () => {
 
       <DependencyPanel issueKey={id!} issueId={issue.id} />
 
-      {memories && memories.data.length > 0 && (
-        <Card title="关联 Memory" style={{ marginTop: 16 }}>
+      {issue.type === 'epic' && <EpicPanel epicKey={issue.issue_key} />}
+
+      {epicMemories.length > 0 && (
+        <Card
+          title={`Epic 共享 Memory（来自 ${epicMemories[0].epic_key}）`}
+          extra={<span style={{ color: '#999' }}>Epic 内所有工作项都能看到</span>}
+          style={{ marginTop: 16 }}
+        >
           <List
-            dataSource={memories.data}
+            dataSource={epicMemories}
             renderItem={(m) => (
               <List.Item key={m.id}>
+                <List.Item.Meta
+                  title={
+                    <Space>
+                      <Tag color={m.type === 'recall' ? 'blue' : 'green'}>{m.type}</Tag>
+                      <span>{m.title}</span>
+                      {memSnapshot.marks[m.id] === 'new' && <Tag color="red">新</Tag>}
+                      {memSnapshot.marks[m.id] === 'updated' && <Tag color="orange">上次读后有更新</Tag>}
+                    </Space>
+                  }
+                  description={<Markdown source={m.content} />}
+                />
+              </List.Item>
+            )}
+          />
+        </Card>
+      )}
+
+      {ownMemories.length > 0 && (
+        <Card title={issue.type === 'epic' ? 'Epic 共享 Memory' : '关联 Memory'} style={{ marginTop: 16 }}>
+          <List
+            dataSource={ownMemories}
+            renderItem={(m) => (
+              <List.Item
+                key={m.id}
+                actions={
+                  issue.epic
+                    ? [
+                        <Popconfirm
+                          key="promote"
+                          title={`把这条 Memory 移到 ${issue.epic.issue_key}，让 Epic 内其他工作项也能看到？`}
+                          onConfirm={() => promoteMutation.mutate({ m })}
+                        >
+                          <a>提升到 Epic</a>
+                        </Popconfirm>,
+                      ]
+                    : undefined
+                }
+              >
                 <List.Item.Meta
                   title={
                     <Space>
@@ -294,6 +420,33 @@ const IssueDetail: React.FC = () => {
             <SimilarIssueList items={dupCandidates} onPick={(c) => setDupTarget(c.key)} />
           </div>
         )}
+      </Modal>
+
+      <Modal
+        title={`${issue.issue_key} 所属 Epic`}
+        open={epicOpen}
+        onCancel={() => setEpicOpen(false)}
+        footer={[
+          issue.epic && (
+            <Button key="rm" danger onClick={() => epicMutation.mutate('')} loading={epicMutation.isPending}>
+              移出 Epic
+            </Button>
+          ),
+          <Button key="cancel" onClick={() => setEpicOpen(false)}>取消</Button>,
+          <Button key="ok" type="primary" disabled={!epicTarget} loading={epicMutation.isPending}
+            onClick={() => epicTarget && epicMutation.mutate(epicTarget)}>
+            确定
+          </Button>,
+        ]}
+      >
+        <p>一张工作项同一时间只属于一个 Epic；选择其他 Epic 会直接改挂。Epic 可以来自其他项目，输入编号即可。</p>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <EpicSelect projectId={issue.project_id} value={epicTarget} onChange={(v) => setEpicTarget(v)} style={{ width: '100%' }} />
+          <Input
+            placeholder="或输入其他项目的 Epic 编号，如 OZX-1642"
+            onChange={(e) => setEpicTarget(e.target.value.trim().toUpperCase() || undefined)}
+          />
+        </Space>
       </Modal>
 
       <Modal

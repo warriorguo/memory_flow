@@ -6,6 +6,7 @@ import { DndContext, useDroppable, useDraggable, useSensor, useSensors, PointerS
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { listIssues, transitionIssueStatus, createIssue } from '../../api/issue';
 import SimilarIssuesHint from '../../components/SimilarIssues';
+import EpicSelect from '../../components/EpicSelect';
 import { useNavigate, useParams } from 'react-router-dom';
 import IssueCard from '../../components/IssueCard';
 import { ISSUE_STATUS_LABELS, ALLOWED_TRANSITIONS } from '../../types/common';
@@ -258,6 +259,9 @@ const KanbanBoard: React.FC<Props> = ({ projectId: propProjectId }) => {
           </Form.Item>
           <Form.Item name="assignee_id" label="负责人">
             <Input />
+          </Form.Item>
+          <Form.Item name="epic" label="所属 Epic">
+            <EpicSelect projectId={projectId} placeholder="不属于任何 Epic" />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} />

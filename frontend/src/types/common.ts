@@ -10,7 +10,13 @@ export interface ApiResponse<T> {
 }
 
 export type ProjectStatus = 'active' | 'paused' | 'archived';
-export type IssueType = 'requirement' | 'bug';
+export type IssueType = 'requirement' | 'bug' | 'epic';
+
+export const ISSUE_TYPE_LABELS: Record<IssueType, string> = {
+  requirement: '需求',
+  bug: '缺陷',
+  epic: 'Epic',
+};
 export type Priority = 'P0' | 'P1' | 'P2';
 export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'testing' | 'done' | 'closed' | 'suspended' | 'rejected' | 'duplicate';
 export type MemoryType = 'recall' | 'write';

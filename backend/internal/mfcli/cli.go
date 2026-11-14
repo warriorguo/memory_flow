@@ -196,6 +196,11 @@ func dispatch(e *env, args []string) error {
 		return dispatchAsset(e, args[1:])
 	case "comment", "comments":
 		return dispatchComment(e, args[1:])
+	case "epic", "epics":
+		if args[0] == "epics" {
+			return cmdEpicList(e, args[1:])
+		}
+		return dispatchEpic(e, args[1:])
 	default:
 		return unknownf("unknown command %q (run `mf help`)", args[0])
 	}
@@ -225,7 +230,7 @@ func dispatchProject(e *env, args []string) error {
 
 func dispatchIssue(e *env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mf issue <list|show|create|similar|dup|update|status|start|done|attach-git|history|comment|comments|dep|tag> …")
+		return fmt.Errorf("usage: mf issue <list|show|context|create|similar|dup|update|status|start|done|attach-git|history|comment|comments|dep|tag> …")
 	}
 	switch args[0] {
 	case "list", "ls":
@@ -238,6 +243,8 @@ func dispatchIssue(e *env, args []string) error {
 		return cmdIssueSimilar(e, args[1:])
 	case "dup", "duplicate":
 		return cmdIssueDup(e, args[1:])
+	case "context", "pickup":
+		return cmdIssueContext(e, args[1:])
 	case "update", "edit":
 		return cmdIssueUpdate(e, args[1:])
 	case "status":
@@ -323,7 +330,7 @@ func dispatchComment(e *env, args []string) error {
 
 func dispatchMemory(e *env, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mf memory <add|search|show|update|rm> …")
+		return fmt.Errorf("usage: mf memory <add|search|show|update|promote|rm> …")
 	}
 	switch args[0] {
 	case "add", "create":
@@ -336,6 +343,8 @@ func dispatchMemory(e *env, args []string) error {
 		return cmdMemoryUpdate(e, args[1:])
 	case "rm", "delete":
 		return cmdMemoryRemove(e, args[1:])
+	case "promote":
+		return cmdMemoryPromote(e, args[1:])
 	default:
 		return unknownf("unknown `mf memory` subcommand %q", args[0])
 	}

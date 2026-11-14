@@ -15,6 +15,7 @@ func NewRouter(
 	syncHandler *SyncHandler,
 	assetHandler *AssetHandler,
 	commentHandler *CommentHandler,
+	epicHandler *EpicHandler,
 ) chi.Router {
 	r := chi.NewRouter()
 
@@ -41,6 +42,13 @@ func NewRouter(
 		r.Patch("/issues/{id}/status", issueHandler.TransitionStatus)
 		r.Post("/issues/{id}/duplicate", issueHandler.MarkDuplicate)
 		r.Get("/issues/{id}/history", issueHandler.GetHistory)
+
+		// Epics (MF-39): an epic is an issue of type "epic".
+		r.Get("/projects/{projectId}/epics", epicHandler.List)
+		r.Get("/epics/{id}", epicHandler.Get)
+		r.Get("/epics/{id}/progress", epicHandler.Progress)
+		r.Put("/issues/{id}/epic", epicHandler.SetEpic)
+		r.Get("/issues/{id}/memories", epicHandler.IssueMemories)
 
 		// Issue dependencies
 		r.Post("/issues/{id}/dependencies", dependencyHandler.Create)
@@ -78,6 +86,8 @@ func NewRouter(
 		// Memories
 		r.Get("/memories", memoryHandler.List)
 		r.Post("/memories", memoryHandler.Create)
+		r.Post("/memories/read", epicHandler.MarkMemoriesRead)
+		r.Post("/memories/{id}/promote", epicHandler.Promote)
 		r.Get("/memories/{id}", memoryHandler.Get)
 		r.Put("/memories/{id}", memoryHandler.Update)
 		r.Delete("/memories/{id}", memoryHandler.Delete)

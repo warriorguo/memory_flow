@@ -19,6 +19,14 @@ type IssueHandler struct {
 	tagRepo  repository.TagRepository
 	resolver *IDResolver
 	comments *service.CommentService
+	epics    *service.EpicService
+}
+
+// WithEpics enables epic membership on create, the epic filter on lists and
+// the epic reference on reads (MF-39).
+func (h *IssueHandler) WithEpics(es *service.EpicService) *IssueHandler {
+	h.epics = es
+	return h
 }
 
 // WithComments lets the handler leave a note on the target when an issue is
@@ -61,6 +69,11 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.resolveCreateEpic(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	issue, similar, err := h.svc.CreateWithSimilar(r.Context(), projectID, req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -81,6 +94,38 @@ func (h *IssueHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeData(w, http.StatusCreated, model.CreatedIssue{Issue: issue, SimilarIssues: similar})
+}
+
+// resolveCreateEpic turns the epic a create request names into EpicID and
+// checks the new issue may join it.
+func (h *IssueHandler) resolveCreateEpic(r *http.Request, req *model.CreateIssueRequest) error {
+	ref := strings.TrimSpace(req.Epic)
+	if ref == "" && req.EpicID == nil {
+		return nil
+	}
+	if h.epics == nil {
+		return fmt.Errorf("epics are not enabled on this server")
+	}
+	if ref != "" {
+		id, err := h.resolver.ResolveIssueID(r.Context(), ref)
+		if err != nil {
+			return err
+		}
+		req.EpicID = &id
+	}
+	_, err := h.epics.CheckMembership(r.Context(), req.Type, *req.EpicID)
+	return err
+}
+
+// fillRefs sets the links a single-issue read shows: duplicates and epic.
+func (h *IssueHandler) fillRefs(r *http.Request, issue *model.Issue) error {
+	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+		return err
+	}
+	if h.epics != nil {
+		return h.epics.FillEpicRef(r.Context(), issue)
+	}
+	return nil
 }
 
 // Similar lists the project's issues that look like a draft (title +
@@ -257,7 +302,7 @@ func (h *IssueHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue.Tags = tags
-	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+	if err := h.fillRefs(r, issue); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -299,7 +344,7 @@ func (h *IssueHandler) MarkDuplicate(w http.ResponseWriter, r *http.Request) {
 			log.Printf("comment on %s after marking %s duplicate: %v", target.IssueKey, issue.IssueKey, err)
 		}
 	}
-	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+	if err := h.fillRefs(r, issue); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -329,7 +374,7 @@ func (h *IssueHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue.Tags = tags
-	if err := h.svc.FillDuplicateRefs(r.Context(), issue); err != nil {
+	if err := h.fillRefs(r, issue); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -366,6 +411,14 @@ func (h *IssueHandler) ListByProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter.TagIDs = tagIDs
+	if ref := strings.TrimSpace(r.URL.Query().Get("epic")); ref != "" {
+		epicID, err := h.resolver.ResolveIssueID(r.Context(), ref)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		filter.EpicID = &epicID
+	}
 
 	issues, total, err := h.svc.List(r.Context(), filter)
 	if err != nil {
@@ -408,6 +461,20 @@ func (h *IssueHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if tagIDs, err = h.checkTagIDs(r, *req.TagIDs); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+	}
+
+	if req.Type != nil && h.epics != nil {
+		existing, err := h.svc.GetByID(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if existing != nil {
+			if err := h.epics.CheckTypeChange(r.Context(), existing, *req.Type); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 		}
 	}
 
